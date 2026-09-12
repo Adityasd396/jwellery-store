@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block title %}Add user{% endblock %}
+
+{% block content %}
+<div class="page-head">
+  <div><h1>Add user</h1><div class="sub">Admins can manage settings, team and backups</div></div>
+  <div class="page-actions"><a href="{{ url_for('users') }}" class="btn btn-ghost">Back</a></div>
+</div>
+
+<div class="card" style="max-width:520px">
+  <form method="POST">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="field">
+      <label for="username">Username *</label>
+      <input type="text" id="username" name="username" required autofocus>
+    </div>
+    <div class="field">
+      <label for="email">Email *</label>
+      <input type="email" id="email" name="email" required>
+    </div>
+    <div class="field">
+      <label for="password">Password *</label>
+      <input type="password" id="password" name="password" minlength="8" required>
+      <div class="help">At least 8 characters.</div>
+    </div>
+    <label class="check">
+      <input type="checkbox" name="is_admin">
+      <span>Admin user — can change settings, manage the team and restore backups</span>
+    </label>
+    <div class="form-actions">
+      <button type="submit" class="btn btn-success">Create user</button>
+      <a href="{{ url_for('users') }}" class="btn btn-ghost">Cancel</a>
+    </div>
+  </form>
+</div>
+{% endblock %}

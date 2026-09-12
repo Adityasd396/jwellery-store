@@ -1,0 +1,84 @@
+{#
+  A ruler, printed at 100%, to prove the printer is not scaling the page.
+
+  No CSS can force a printer to honour a page size 1:1 — if the driver's paper
+  size or the print dialog's scale is wrong, the tag comes out the wrong
+  physical size and nothing in the stylesheet can stop it. So print this, put a
+  ruler on it, and find out before wasting label stock.
+#}
+{% set pw = bar_mm + 18 %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Print calibration · {{ bar_mm|round(0)|int }} mm</title>
+<style>
+  @page { size: {{ pw }}mm 30mm; margin: 0; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: #fff; color: #000;
+               font-family: Arial, Helvetica, sans-serif; }
+  .strip { width: {{ pw }}mm; height: 30mm; padding: 2mm 4mm; position: relative; }
+  .lead { font-size: 3.2mm; font-weight: 700; margin: 0; line-height: 1.1; }
+  .sub  { font-size: 2.6mm; margin: .6mm 0 0; }
+
+  /* 1 mm ticks 2 mm tall, 5 mm ticks 4 mm tall, both sitting on the baseline */
+  .ruler {
+    position: absolute; left: 4mm; top: 8mm;
+    width: {{ bar_mm }}mm; height: 6mm;
+    border: .3mm solid #000; border-bottom: 0;
+    background-image:
+      repeating-linear-gradient(90deg, #000 0 .25mm, transparent .25mm 5mm),
+      repeating-linear-gradient(90deg, #000 0 .15mm, transparent .15mm 1mm);
+    background-size: 100% 4mm, 100% 2mm;
+    background-position: 0 100%, 0 100%;
+    background-repeat: repeat-x, repeat-x;
+  }
+  .ruler::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0;
+                  border-bottom: .3mm solid #000; }
+  .lbl { position: absolute; top: 14.4mm; font-size: 2.6mm;
+         transform: translateX(-50%); }
+  .lbl.first { transform: none; }
+
+  .vbar { position: absolute; left: {{ bar_mm + 10 }}mm; top: 8mm;
+          width: 4mm; height: 10mm; border: .3mm solid #000;
+          background-image: repeating-linear-gradient(0deg, #000 0 .25mm, transparent .25mm 5mm),
+                            repeating-linear-gradient(0deg, #000 0 .15mm, transparent .15mm 1mm);
+          background-size: 4mm 100%, 2mm 100%;
+          background-position: 100% 0, 100% 0;
+          background-repeat: repeat-y, repeat-y; }
+  .vbar::after { content: ""; position: absolute; top: 0; bottom: 0; left: 0;
+                 border-left: .3mm solid #000; }
+  .vnote { position: absolute; left: {{ bar_mm + 10 }}mm; top: 18.6mm;
+           font-size: 2.6mm; width: 12mm; }
+
+  .verdict { position: absolute; left: 4mm; top: 20mm; right: 4mm;
+             font-size: 2.8mm; line-height: 1.35; }
+  .verdict b { font-weight: 700; }
+  @media screen {
+    body { background: #f5f5f5; padding: 14px; }
+    .strip { background: #fff; box-shadow: 0 1px 6px rgba(0,0,0,.18); }
+  }
+</style>
+</head>
+<body>
+<div class="strip">
+  <p class="lead">Print calibration — measure the bar</p>
+  <p class="sub">This bar must measure exactly <b>{{ bar_mm|round(0)|int }} mm</b> with a ruler.</p>
+
+  <div class="ruler"></div>
+  {% for mm in range(0, (bar_mm|round(0)|int) + 1, 10) %}
+  <span class="lbl{% if loop.first %} first{% endif %}"
+        style="left: {{ 4 + mm }}mm">{{ mm }}</span>
+  {% endfor %}
+
+  <div class="vbar"></div>
+  <div class="vnote">10 mm</div>
+
+  <div class="verdict">
+    <b>If it measures {{ bar_mm|round(0)|int }} mm:</b> the scale is right — print your tags.<br>
+    <b>If it does not:</b> set Scale to 100% (not “Fit to page”), Margins to None,
+    and pick the {{ bar_mm|round(0)|int }} mm label as the paper size.
+  </div>
+</div>
+</body>
+</html>

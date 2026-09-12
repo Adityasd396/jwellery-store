@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% block title %}Collect payment{% endblock %}
+
+{% block content %}
+<div class="page-head">
+  <div><h1>Collect payment</h1><div class="sub">{{ client.name }} · spread oldest bill first</div></div>
+  <div class="page-actions"><a href="{{ url_for('view_client', client_id=client.id) }}" class="btn btn-ghost">Back</a></div>
+</div>
+
+<div class="card" style="max-width:700px">
+  <form method="POST">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="field-grid">
+      <div class="field">
+        <label for="amount">Amount (₹) *</label>
+        <input type="number" id="amount" name="amount" step="0.01" min="0"
+               value="{{ ((client.balance or 0)/100)|round(2) }}" required>
+        <div class="help">Balance today: ₹{{ (client.balance or 0)|inr }}</div>
+      </div>
+      <div class="field">
+        <label for="payment_method">Method</label>
+        <select id="payment_method" name="payment_method">
+          <option value="cash">Cash</option>
+          <option value="UPI">UPI</option>
+          <option value="bank_transfer">Bank Transfer</option>
+          <option value="card">Card</option>
+        </select>
+      </div>
+    </div>
+    <div class="field">
+      <label for="notes">Notes</label>
+      <textarea id="notes" name="notes" rows="2" placeholder="optional"></textarea>
+    </div>
+
+    <div class="card-head" style="margin-top:6px"><h3>Outstanding bills</h3></div>
+    {% if unpaid_invoices %}
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Bill</th><th>Date</th><th class="r">Total</th><th class="r">Paid</th><th class="r">Remaining</th></tr></thead>
+        <tbody>
+          {% for invoice in unpaid_invoices %}
+          <tr>
+            <td>{{ invoice.invoice_number }}</td>
+            <td class="mini">{{ invoice.date_created.strftime('%d %b %Y') }}</td>
+            <td class="r">₹{{ (invoice.total)|inr }}</td>
+            <td class="r mini">₹{{ (invoice.paid_amount)|inr }}</td>
+            <td class="r"><strong style="color:var(--amber)">₹{{ (invoice.remaining_amount)|inr }}</strong></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="empty"><span class="big">✓</span>No outstanding bills.</div>
+    {% endif %}
+
+    <div class="form-actions">
+      <button type="submit" class="btn btn-success">Process payment</button>
+      <a href="{{ url_for('view_client', client_id=client.id) }}" class="btn btn-ghost">Cancel</a>
+    </div>
+  </form>
+</div>
+{% endblock %}

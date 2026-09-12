@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% block title %}Add client{% endblock %}
+
+{% block content %}
+<div class="page-head">
+  <div><h1>Add client</h1><div class="sub">Name and phone are enough to start billing</div></div>
+  <div class="page-actions"><a href="{{ url_for('clients') }}" class="btn btn-ghost">Back</a></div>
+</div>
+
+<div class="card" style="max-width:640px">
+  <form method="POST">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="field-grid">
+      <div class="field">
+        <label for="name">Name *</label>
+        <input type="text" id="name" name="name" placeholder="Full name" required autofocus>
+      </div>
+      <div class="field">
+        <label for="phone">Phone *</label>
+        <input type="text" id="phone" name="phone" placeholder="10-digit mobile" required>
+        <div class="help">Phone numbers are unique per client.</div>
+      </div>
+    </div>
+    <div class="field">
+      <label for="gstin">GSTIN (optional)</label>
+      <input type="text" id="gstin" name="gstin" maxlength="20" placeholder="e.g. 27ABCDE1234F1Z5">
+      <div class="help">Printed on their bills. Leave blank for a B2C customer.</div>
+    </div>
+    <div class="field">
+      <label for="email">Email</label>
+      <input type="email" id="email" name="email" placeholder="optional">
+    </div>
+    <div class="field">
+      <label for="address">Address</label>
+      <textarea id="address" name="address" rows="2" placeholder="optional"></textarea>
+    </div>
+    <div class="field">
+      <label for="credit_limit">Credit limit (₹)</label>
+      <input type="number" id="credit_limit" name="credit_limit" step="0.01" min="0" value="0">
+      <div class="help">0 = no credit. Billing stops if a client would cross it.</div>
+    </div>
+    <div class="form-actions">
+      <button type="submit" class="btn btn-success">Save client</button>
+      <a href="{{ url_for('clients') }}" class="btn btn-ghost">Cancel</a>
+    </div>
+  </form>
+</div>
+{% endblock %}

@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Statement — {{ client.name }}</title>
+    <style>
+        body { font-family: Arial, Helvetica, sans-serif; color: #000; margin: 26px; font-size: 14px; }
+        .head { border-bottom: 2px solid #000; padding-bottom: 10px; margin-bottom: 6px; }
+        h1 { font-size: 21px; margin: 0; }
+        .muted { color: #333; font-size: 13px; }
+        h3 { font-size: 14px; margin: 20px 0 6px; text-transform: uppercase; letter-spacing: .06em; }
+        table { width: 100%; border-collapse: collapse; }
+        th, td { border: 1px solid #000; padding: 7px 9px; text-align: left; font-size: 13.5px; }
+        th { background: #f0ece2; }
+        td.r, th.r { text-align: right; }
+        .tot { font-weight: bold; font-size: 15px; margin-top: 16px; padding: 10px 12px; border: 2px solid #000; }
+        .no-print button { font: inherit; padding: 8px 14px; border: 1px solid #000; background: #fff; cursor: pointer; border-radius: 6px; }
+        .no-print a { margin-left: 8px; color: #000; }
+        @media print { .no-print { display: none !important; } body { margin: 0; } }
+    </style>
+</head>
+<body>
+    <div class="no-print" style="margin-bottom: 16px;">
+        <button onclick="window.print()">🖨️ Print</button>
+        <a href="{{ url_for('view_client', client_id=client.id) }}">Back to client</a>
+    </div>
+
+    <div class="head">
+        <h1>{{ settings.firm_name if settings else '' }} — Account Statement</h1>
+        <p class="muted">{{ client.name }} · {{ client.phone or '' }} {% if client.address %}· {{ client.address }}{% endif %}</p>
+        <p class="muted">Issued {{ now().strftime('%d %b %Y') }}</p>
+    </div>
+
+    <h3>Bills</h3>
+    <table>
+        <thead><tr><th>Date</th><th>Bill #</th><th>Status</th><th class="r">Total (₹)</th><th class="r">Paid (₹)</th><th class="r">Due (₹)</th></tr></thead>
+        <tbody>
+            {% for inv in invoices %}
+            <tr><td>{{ inv.date_created.strftime('%d %b %Y') }}</td><td>{{ inv.invoice_number }}</td>
+            <td>{{ inv.status|capitalize }}</td><td class="r">{{ (inv.total)|inr }}</td>
+            <td class="r">{{ (inv.paid_amount)|inr }}</td><td class="r">{{ (inv.remaining_amount)|inr }}</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    <h3>Payments</h3>
+    <table>
+        <thead><tr><th>Date</th><th class="r">Amount (₹)</th><th>Method</th><th>Notes</th></tr></thead>
+        <tbody>
+            {% for p in payments %}
+            <tr><td>{{ p.payment_date.strftime('%d %b %Y') }}</td><td class="r">{{ (p.amount)|inr }}</td>
+            <td>{{ (p.payment_method or 'cash')|capitalize }}</td><td>{{ p.notes or '–' }}</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    <p class="tot">Purchases ₹{{ (client.total_purchases or 0)|inr }} ·
+       Paid ₹{{ (client.total_payments or 0)|inr }} ·
+       Balance Due ₹{{ (client.balance or 0)|inr }}</p>
+</body>
+</html>

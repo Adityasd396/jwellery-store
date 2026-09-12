@@ -1,0 +1,87 @@
+{% extends "base.html" %}
+{% block title %}{{ product.name }}{% endblock %}
+
+{% block head %}
+<style>
+.prod-grid{display:grid;grid-template-columns:minmax(240px,320px) 1fr;gap:22px}
+@media (max-width:760px){.prod-grid{grid-template-columns:1fr}}
+.code-box{background:#fff;border:1px solid var(--line);border-radius:12px;padding:16px;text-align:center}
+.code-box img{max-width:100%;height:70px}
+.code-num{font-size:17px;font-weight:700;letter-spacing:2px;margin-top:6px}
+.kv{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:0 18px}
+.kv div{padding:9px 0;border-bottom:1px solid #f2eee5}
+.kv dt{font-size:11.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);font-weight:600}
+.kv dd{font-size:14.5px;margin-top:2px}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>{{ product.name }}</h1>
+    <div class="sub">
+      {{ product.sku }} ·
+      <span class="badge badge-{{ 'gold' if product.item_type == 'gold' else 'neutral' }}">{{ product.item_type|capitalize }}</span>
+      {% if product.category %} · {{ product.category }}{% endif %}
+    </div>
+  </div>
+  <div class="page-actions">
+    <a href="{{ url_for('print_product_tag', product_id=product.id) }}" class="btn btn-gold">Print Tag</a>
+    <a href="{{ url_for('edit_product', product_id=product.id) }}" class="btn btn-ghost">Edit</a>
+    <form method="POST" class="inline" action="{{ url_for('delete_product', product_id=product.id) }}"
+          data-confirm="Delete {{ product.name }}? Blocked if it appears on any bill.">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button type="submit" class="btn btn-danger">Delete</button>
+    </form>
+    <a href="{{ url_for('products') }}" class="btn btn-ghost">Back</a>
+  </div>
+</div>
+
+<div class="card">
+  <div class="prod-grid">
+    <div>
+      {% if barcode_data %}
+      <div class="code-box">
+        <img src="{{ barcode_data }}" alt="Barcode {{ product.barcode }}">
+        <div class="code-num">{{ product.barcode }}</div>
+      </div>
+      {% endif %}
+      {% if qr_data %}
+      <div class="code-box" style="margin-top:14px">
+        <img src="{{ qr_data }}" alt="QR Code" style="max-width:170px;height:auto">
+        <div class="mini" style="margin-top:6px">Scan to pull this item into a bill</div>
+      </div>
+      {% endif %}
+    </div>
+
+    <div>
+      <dl class="kv">
+        <div><dt>Price</dt><dd>₹{{ (product.unit_price)|inr }}
+          {% if product.custom_price %}<span class="mini">· custom, auto-reprice skipped</span>{% endif %}</dd></div>
+        <div><dt>Cost</dt><dd>₹{{ (product.cost_price or 0)|inr }}</dd></div>
+        <div><dt>Sold by</dt><dd>{% if (product.unit or 'pcs') == 'g' %}weight (grams){% else %}pieces{% endif %}</dd></div>
+        {% if (product.unit or 'pcs') != 'g' %}
+        <div><dt>Weight / unit</dt><dd>{{ product.weight_per_unit }} g</dd></div>
+        {% endif %}
+        {% if (product.unit or 'pcs') == 'g' %}
+        <div><dt>Stock</dt><dd>{{ product.stock_weight or 0 }} g</dd></div>
+        {% else %}
+        <div><dt>Stock</dt><dd>{{ product.stock_quantity }} pcs</dd></div>
+        {% endif %}
+        <div><dt>Product code</dt><dd style="letter-spacing:1px">{{ product.barcode }}</dd></div>
+        <div><dt>Default making</dt><dd>
+            {% if product.item_type == 'gold' %}
+              {% if settings and settings.gold_making_mode == 'flat' %}₹{{ ((settings.gold_making_flat or 0)/100) }}/g{% else %}{{ settings.gold_making_charge_percent if settings else 5 }}%{% endif %}
+            {% else %}
+              {% if settings and settings.silver_making_mode == 'percent' %}{{ settings.silver_making_percent or 0 }}%{% else %}₹{{ ((settings.silver_making_charge_per_10gm or 0)/100) if settings else 150 }}/10gm{% endif %}
+            {% endif %}
+        </dd></div>
+        <div><dt>Added</dt><dd>{{ product.created_at.strftime('%d %b %Y') }}</dd></div>
+      </dl>
+      {% if product.description %}
+      <p class="mini" style="margin-top:14px">{{ product.description }}</p>
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% endblock %}

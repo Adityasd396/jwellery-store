@@ -1,0 +1,240 @@
+{#
+  One jewellery tag. Used by:
+    product_tag.html  – single item
+    tags_print.html   – a batch (category / selection / everything)
+    tags.html         – designer preview
+
+  TWO SHAPES ONLY, matching the label rolls jewellers buy:
+
+    rectangle  – a plain rectangular label.
+    tail       – rectangle body + a narrow tail strip running out of the
+                 right edge (the rat-tail / dori tag). The tail can sit at
+                 the top, middle or bottom of the body, and can carry a
+                 punched hole.
+
+  Everything else about the look comes from the TagTemplate (tpl): size,
+  type sizes, padding, line spacing, QR size, barcode size, which fields
+  print, and the border. `w`/`h`/`tail` override the geometry when the
+  caller knows better (e.g. an explicit size in the URL).
+
+  All of it travels to the browser as CSS custom properties, so the
+  designer's live preview can reproduce the print exactly.
+#}
+
+{#
+  The left-hand text stack. Shared by both shapes — deliberately factored out
+  so a change to what a tag prints can never land in one shape and be missed
+  in the other.
+#}
+{% macro _tag_left(tpl, p, bc=None) %}
+<div class="jt-left">
+  {% if tpl.show_name %}<div class="jt-name">{{ p.name }}</div>{% endif %}
+  <div class="jt-line">
+    {% if tpl.show_category and p.category %}<span>{{ p.category }}</span>{% endif %}
+    {% if tpl.show_metal and p.item_type %}<span>{{ p.item_type|capitalize }}</span>{% endif %}
+    {% if tpl.show_weight and (p.unit or 'pcs') != 'g' and p.weight_per_unit %}<span>{{ '%g'|format(p.weight_per_unit) }} g</span>{% endif %}
+  </div>
+  {% if tpl.show_price %}
+  <div class="jt-price">₹{{ (p.unit_price)|inr0 }}{% if (p.unit or 'pcs') == 'g' %}<span class="jt-per">/g</span>{% endif %}</div>
+  {% endif %}
+  {% if tpl.show_code and p.barcode %}<div class="jt-code">{{ p.barcode }}</div>{% endif %}
+  {% if tpl.show_sku and p.sku %}<div class="jt-sku">{{ p.sku }}</div>{% endif %}
+  {% if tpl.note %}<div class="jt-note">{{ tpl.note }}</div>{% endif %}
+  {% if bc %}<img class="jt-bc" src="{{ bc }}" alt="Barcode {{ p.barcode }}">{% endif %}
+</div>
+{% endmacro %}
+
+
+{% macro tag_art(tpl, p, settings=None, qr=None, bc=None, w=None, h=None, tail=None) %}
+{% set shape = tpl.shape if tpl.shape in ('rectangle', 'tail') else 'rectangle' %}
+{% set body_w = (w if w else (tpl.width_mm or 50)) %}
+{% set body_h = (h if h else (tpl.height_mm or 25)) %}
+{% set tail_mm = (tail if tail is not none else (tpl.tail_mm or 16)) if shape == 'tail' else 0 %}
+{# auto sizing: a 0 on the design means "scale it from the tag height" #}
+{% set tail_h = (tpl.tail_h_mm if tpl.tail_h_mm and tpl.tail_h_mm > 0 else body_h * 0.40) if shape == 'tail' else 0 %}
+{% set hole_mm = (tpl.tail_hole_mm or 0) if shape == 'tail' else 0 %}
+{% set qr_sz = tpl.qr_mm if tpl.qr_mm and tpl.qr_mm > 0 else body_h * 0.55 %}
+{% set bc_h = tpl.bc_h_mm if tpl.bc_h_mm and tpl.bc_h_mm > 0 else body_h * 0.28 %}
+{% set tail_pos = {'top': 'flex-start', 'bottom': 'flex-end'}.get(tpl.tail_pos, 'center') %}
+<div class="jt jt-shape-{{ shape }} jt-{{ tpl.style or 'classic' }} jt-b-{{ tpl.border or 'solid' }}"
+     data-shape="{{ shape }}"
+     style="--jn:{{ tpl.font_name or 10 }}pt; --jd:{{ tpl.font_detail or 8 }}pt;
+            --tw:{{ body_w }}mm; --th:{{ body_h }}mm;
+            --pad:{{ (tpl.pad_mm if tpl.pad_mm is not none else 1.4)|round(2) }}mm;
+            --padh:{{ (tpl.pad_h_mm if tpl.pad_h_mm is not none else 2)|round(2) }}mm;
+            --gaph:{{ (tpl.gap_mm if tpl.gap_mm is not none else 0.5)|round(2) }}mm;
+            {# round: 22 * 0.55 is 12.100000000000001 in binary floating point,
+               and that is exactly what would land in the CSS #}
+            --qr:{{ qr_sz|round(2) }}mm; --bch:{{ bc_h|round(2) }}mm;
+            --bcw:{{ tpl.bc_w_pct or 100 }}%;
+            --tail:{{ tail_mm }}mm; --tailh:{{ tail_h|round(2) }}mm;
+            --tailpos:{{ tail_pos }}; --hole:{{ hole_mm }}mm;">
+  {% if tpl.show_firm and settings and settings.firm_name %}
+  <div class="jt-firm">{{ settings.firm_name }}</div>
+  {% endif %}
+
+  {% if shape == 'tail' %}
+  {# Body card + the tail strip running out of its right edge. #}
+  <div class="jt-body">
+    <div class="jt-card">
+      {{ _tag_left(tpl, p, bc) }}
+      {% if qr %}<div class="jt-qr"><img src="{{ qr }}" alt="QR"></div>{% endif %}
+    </div>
+    <div class="jt-tail">
+      {% if hole_mm > 0 %}<span class="jt-hole" aria-hidden="true"></span>{% endif %}
+    </div>
+  </div>
+  {% else %}
+  {# Plain rectangle. #}
+  <div class="jt-body">
+    {{ _tag_left(tpl, p, bc) }}
+    {% if qr %}<div class="jt-qr"><img src="{{ qr }}" alt="QR"></div>{% endif %}
+  </div>
+  {% endif %}
+</div>
+{% endmacro %}
+
+
+{# Print + screen CSS for tags. `thermal` switches @page to the tag size. #}
+{% macro tag_css(thermal=True, first_w=50, first_h=25, first_tail=0) %}
+{% set total_w = first_w + (first_tail or 0) %}
+<style>
+  .jt { box-sizing: border-box; background: #fff; overflow: hidden;
+        display: inline-flex; flex-direction: column; justify-content: center;
+        position: relative; }
+  /* Border-box everywhere inside the tag. The body card and the tail are both
+     "100% / N mm tall" AND carry their own border, so under the default
+     content-box they would measure 0.7 mm taller than the tag and get their
+     bottom edge shaved off by .jt's overflow:hidden. */
+  .jt *, .jt *::before, .jt *::after { box-sizing: border-box; }
+
+  /* ---- shape: plain rectangle --------------------------------------- */
+  .jt-shape-rectangle {
+    width: var(--tw); height: var(--th);
+    padding: var(--pad) var(--padh);
+    border: .35mm solid #000;
+  }
+  .jt-b-none.jt-shape-rectangle   { border: 0; }
+  .jt-b-double.jt-shape-rectangle { border: .8mm double #000; }
+  .jt-b-dashed.jt-shape-rectangle { border: .4mm dashed #000; }
+
+  /* ---- shape: rectangle + tail -------------------------------------- */
+  .jt-shape-tail {
+    width: calc(var(--tw) + var(--tail));
+    height: var(--th);
+    padding: 0;
+    border: 0;
+  }
+  .jt-shape-tail .jt-card {
+    flex: 0 0 auto; width: var(--tw); height: 100%;
+    padding: var(--pad) var(--padh);
+    border: .35mm solid #000;
+    display: flex; align-items: center; gap: var(--gaph);
+  }
+  /* The tail is a separate strip. Its left edge is left open so the body's
+     right border reads as the single fold/score line between them — which is
+     exactly where a rat-tail label is meant to fold. */
+  .jt-shape-tail .jt-tail {
+    flex: 0 0 auto;
+    width: var(--tail); height: var(--tailh);
+    align-self: var(--tailpos);
+    border: .35mm solid #000; border-left: 0;
+    position: relative;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .jt-shape-tail.jt-b-none   .jt-card { border: 0; }
+  .jt-shape-tail.jt-b-double .jt-card { border: .8mm double #000; }
+  .jt-shape-tail.jt-b-dashed .jt-card { border: .4mm dashed #000; }
+  .jt-shape-tail.jt-b-none   .jt-tail { border: 0; }
+  .jt-shape-tail.jt-b-double .jt-tail { border: .8mm double #000; border-left: 0; }
+  .jt-shape-tail.jt-b-dashed .jt-tail { border: .4mm dashed #000; border-left: 0; }
+  .jt-shape-tail .jt-hole {
+    position: absolute; right: 2mm; top: 50%;
+    width: var(--hole); height: var(--hole);
+    border-radius: 50%; background: #fff; border: .3mm solid #000;
+    transform: translateY(-50%);
+  }
+
+  /* ---- inner layout, shared by both shapes -------------------------- */
+  .jt-body { display: flex; align-items: stretch; min-height: 0;
+             width: 100%; height: 100%; }
+  .jt-left { flex: 1 1 auto; min-width: 0; display: flex;
+             flex-direction: column; justify-content: center;
+             gap: var(--gaph); }
+  .jt-qr { flex: 0 0 auto; display: flex; align-items: center; }
+  .jt-qr img { width: var(--qr); height: var(--qr); display: block; }
+
+  .jt-name { font-weight: 700; font-size: var(--jn); line-height: 1.05;
+             white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .jt-line, .jt-price, .jt-code, .jt-sku, .jt-note, .jt-firm {
+             font-size: var(--jd); line-height: 1.2; }
+  .jt-line:empty { display: none; }
+  .jt-line span + span::before { content: " · "; }
+  .jt-code { font-weight: 700; letter-spacing: .07em; }
+  .jt-per { font-weight: 400; }
+  .jt-note { font-style: italic; }
+  .jt-firm { font-weight: 700; letter-spacing: .04em; text-transform: uppercase;
+             white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  /* width comes from the design (a % of the text column) and height is an
+     explicit mm, so the bars are never squashed by the tag's aspect ratio */
+  .jt-bc { display: block; width: var(--bcw); height: var(--bch);
+           object-fit: contain; }
+
+  /* ---- typography styles -------------------------------------------- */
+  .jt-classic .jt-name { border-bottom: .3mm solid #000;
+    padding-bottom: .3mm; }
+  .jt-classic .jt-price { font-weight: 700; }
+  .jt-modern .jt-name { text-transform: uppercase; letter-spacing: .02em; }
+  .jt-modern .jt-price { font-weight: 700; font-size: calc(var(--jd) * 1.15); }
+  /* "compact" tightens the shop's own numbers rather than replacing them */
+  .jt-compact { padding: calc(var(--pad) * .6) calc(var(--padh) * .7); }
+  .jt-compact .jt-card { padding: calc(var(--pad) * .6) calc(var(--padh) * .7); }
+  .jt-compact .jt-name { font-size: calc(var(--jn) * .82); }
+  .jt-compact .jt-bc { height: calc(var(--bch) * .8); }
+  .jt-bold .jt-price { font-size: var(--jn); font-weight: 800; }
+  .jt-bold .jt-name { font-size: calc(var(--jd) * 1.05); }
+  .jt-minimal { text-align: center; }
+  .jt-minimal .jt-body { justify-content: center; }
+  .jt-minimal .jt-tail { display: none; }
+
+  /* ---- print & sheet framing ---------------------------------------- */
+  {% if thermal %}
+  /* One label per page, and the page IS the label — this is what makes a tag
+     come out at its true physical size. */
+  @page { size: {{ total_w }}mm {{ first_h }}mm; margin: 0; }
+  html, body { margin: 0; padding: 0; background: #fff; }
+  .jt { margin: 0; break-inside: avoid;
+        page-break-after: always; break-after: page; }
+  .jt:last-child { page-break-after: auto; break-after: auto; }
+  {% else %}
+  /* Sheet layout: many tags on the shop's own paper, each still at its true
+     mm size. Do NOT pin @page to a single tag's size here — doing exactly
+     that printed a whole A4 sheet of tags squeezed onto a 71 x 22 mm page,
+     which is what a "garbage print" looks like. */
+  @page { margin: 8mm; }
+  html, body { margin: 0; padding: 0; background: #fff; }
+  .sheet { display: flex; flex-wrap: wrap; gap: 0; align-content: flex-start; }
+  .jt { margin: 0; break-inside: avoid; }
+  {% endif %}
+
+  @media screen {
+    body { background: #f5f5f5; }
+    .jt { box-shadow: 0 1px 6px rgba(0,0,0,.18); margin: 6px; }
+  }
+  @media print {
+    /* The page is exactly as wide as the tag, so ANY padding or centring on a
+       wrapper pushes the tag wider than its own page, and the browser shaves
+       the overhang off BOTH edges — losing the border, the first characters
+       and the end of the tail. Zero every wrapper in print. */
+    html, body { margin: 0 !important; padding: 0 !important; }
+    .sheet { margin: 0 !important; padding: 0 !important; gap: 0 !important;
+             justify-content: flex-start !important;
+             align-content: flex-start !important; }
+    .jt { box-shadow: none !important; margin: 0 !important; }
+    .no-print { display: none !important; }
+    /* keep the label's white fill and its border on paper */
+    * { -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important; }
+  }
+</style>
+{% endmacro %}

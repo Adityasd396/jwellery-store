@@ -1,0 +1,747 @@
+{% extends "base.html" %}
+{% block title %}New bill{% endblock %}
+
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>New bill</h1>
+    <div class="sub">Today's rates — gold ₹{{ (settings.gold_manual_price or 0)|inr }}/g ·
+      silver ₹{{ (settings.silver_manual_price or 0)|inr }}/g (frozen on this bill)</div>
+  </div>
+  <div class="page-actions">
+    <a href="{{ url_for('invoices') }}" class="btn btn-ghost">Cancel</a>
+  </div>
+</div>
+
+<div class="card">
+    <form method="POST" id="invoice-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="form-group">
+            <label for="client-search">Search Client *</label>
+            <input type="text" id="client-search" placeholder="🔍 Type name or phone..." autocomplete="off"
+                   style="margin-bottom: 8px;">
+            <select id="client_id" name="client_id" required size="1">
+                <option value="">-- Choose a client --</option>
+                {% for client in clients %}
+                <option value="{{ client.id }}" data-search="{{ (client.name ~ ' ' ~ client.phone)|lower }}"
+                        data-balance="{{ (client.balance or 0)|inr }}"
+                        data-gstin="{{ client.gstin or '' }}"
+                        {% if selected_client_id == client.id %}selected{% endif %}>{{ client.name }} ({{ client.phone }}) — Bal: ₹{{ (client.balance or 0)|inr }}</option>
+                {% endfor %}
+            </select>
+            <div id="client-hint" style="font-size: 13px; color: #666; margin-top: 4px;"></div>
+        </div>
+
+        <div class="form-group" id="gstin-group">
+            <label for="client_gstin">Customer GSTIN (optional)</label>
+            <input type="text" id="client_gstin" name="client_gstin" maxlength="20"
+                   placeholder="e.g. 27ABCDE1234F1Z5" autocomplete="off">
+            <div id="gstin-hint" style="font-size: 13px; color: #666; margin-top: 4px;"></div>
+        </div>
+
+        <div class="form-grid" style="margin-top: 20px;">
+            <div class="form-group">
+                <label for="status">Status *</label>
+                <select id="status" name="status" required>
+                    <option value="pending" selected>Pending</option>
+                    <option value="paid">Paid</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label for="payment_type">Payment Type *</label>
+                <select id="payment_type" name="payment_type" required>
+                    <option value="full">Full Payment</option>
+                    <option value="partial">Partial Payment</option>
+                </select>
+            </div>
+        </div>
+
+        <div class="form-group" style="margin-top: 15px;">
+            <label for="payment_method">Payment Method *</label>
+            <select id="payment_method" name="payment_method" required>
+                <option value="cash">Cash</option>
+                <option value="UPI">UPI</option>
+                <option value="bank_transfer">Bank Transfer</option>
+                <option value="card">Card</option>
+            </select>
+        </div>
+
+        <div class="form-group" id="partial_payment_section" style="display: none;">
+            <label for="partial_amount">Partial Payment Amount (₹)</label>
+            <input type="number" id="partial_amount" name="partial_amount" step="0.01" min="0" placeholder="Enter partial payment amount">
+        </div>
+
+        <h3 style="margin-top: 30px; margin-bottom: 15px;">Invoice Items</h3>
+
+        <div id="product-scanner" style="margin-bottom: 15px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+            <input type="text" id="product-code" placeholder="📷 Scan barcode or type code..." style="padding: 12px; border: 1px solid #ddd; border-radius: 4px; width: 300px; max-width: 100%; font-size: 14px;">
+            <button type="button" class="btn btn-success" onclick="addProductByCode()">Add</button>
+            <button type="button" class="btn btn-primary" onclick="openScanner()">📷 Camera Scan</button>
+            <label class="btn btn-primary" style="cursor: pointer;">🖼️ Upload QR
+                <input type="file" id="qr-upload" accept="image/*" style="display: none;">
+            </label>
+            <span id="scan-msg" style="font-size: 13px; color: #666;"></span>
+        </div>
+
+        <div id="scan-modal" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.75); z-index: 1000; align-items: center; justify-content: center;">
+            <div style="background: white; border-radius: 12px; padding: 18px; max-width: 440px; width: 92%; text-align: center;">
+                <h3 style="margin-top: 0;">Scan product tag</h3>
+                <video id="scan-video" playsinline muted
+                       style="width: 100%; max-height: 320px; background: #000; border-radius: 8px;"></video>
+                <p id="scan-status" style="font-size: 13px; color: #666;">Point the camera at the tag's QR code or barcode…</p>
+                <div style="display: flex; gap: 8px; justify-content: center;">
+                    <button type="button" class="btn btn-primary" onclick="switchCamera()">🔄 Switch Camera</button>
+                    <button type="button" class="btn btn-danger" onclick="closeScanner()">Close</button>
+                </div>
+            </div>
+        </div>
+
+        <div id="items-container">
+            <div class="item-row" style="display: grid; grid-template-columns: 2fr 1fr 1fr 1fr 1fr 1fr auto; gap: 8px; margin-bottom: 10px; align-items: center;">
+                <input type="text" name="description" placeholder="Description" required>
+                <select name="item_type">
+                    <option value="gold">Gold</option>
+                    <option value="silver">Silver</option>
+                    <option value="general">General</option>
+                </select>
+                <input type="number" name="quantity" placeholder="Qty" step="any" min="0.01" value="1" required>
+                <input type="number" name="weight" placeholder="Weight (g)" step="0.01" min="0" class="metal-field">
+                <div {% if settings is not none and not settings.show_making_charges %}style="display: none;"{% endif %}>
+                    <label class="making-label" style="font-size: 12px; color: #666;">Making % <span class="rate-hint"></span></label>
+                    <input type="number" name="making_charges" placeholder="0" step="0.01" min="0" class="making-field">
+                    <input type="hidden" name="making_mode" class="making-mode-field" value="">
+                </div>
+                <input type="number" name="unit_price" class="price-field" placeholder="Price/Unit" step="0.01" min="0" required>
+                <input type="hidden" name="product_code" class="product-code-field" value="">
+                <input type="text" class="line-total" placeholder="Total" readonly style="background-color: #f8f9fa; width: 80px;">
+                <button type="button" class="btn btn-danger btn-sm" onclick="removeItem(this)">×</button>
+                <div class="line-note"></div>
+            </div>
+        </div>
+
+        <button type="button" class="btn btn-primary add-item-btn" onclick="addItem()">+ Add Item</button>
+
+        <div class="total-section" style="background-color: #f8f9fa; padding: 20px; border-radius: 8px; margin-top: 20px; border: 1px solid #d4af37;">
+            <h3 style="color: #d4af37; margin: 0 0 15px 0;">Invoice Total</h3>
+            <p style="font-size: 13px; color: #666;">Today's rates — Gold: ₹<span id="rate-gold">{{ (settings.gold_manual_price or 0)|inr }}</span>/g ·
+               Silver: ₹<span id="rate-silver">{{ (settings.silver_manual_price or 0)|inr }}</span>/g (frozen on this bill)</p>
+            <p>Subtotal: ₹<span id="subtotal">0.00</span></p>
+            <div style="display: flex; gap: 8px; align-items: center; margin: 8px 0; flex-wrap: wrap;">
+                <label for="discount_type" style="font-size: 14px;">Discount:</label>
+                <select id="discount_type" name="discount_type" style="padding: 6px; border: 1px solid #ddd; border-radius: 4px;">
+                    <option value="none">None</option>
+                    <option value="percent">% Percent</option>
+                    <option value="flat">₹ Flat</option>
+                </select>
+                <input type="number" id="discount_value" name="discount_value" step="0.01" min="0" value="0" placeholder="0"
+                       style="padding: 6px; border: 1px solid #ddd; border-radius: 4px; width: 110px;">
+                <span style="font-size: 14px;">= −₹<span id="discount-amount">0.00</span></span>
+            </div>
+            <p>GST (<span id="gst-rate-display">3</span>%): ₹<span id="gst-amount">0.00</span></p>
+            <div style="border-top: 1px dashed #ccc; margin: 10px 0; padding-top: 10px;">
+                <p style="font-size: 14px; font-weight: bold; margin: 0 0 6px 0;">♻️ Old Metal Exchange</p>
+                <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                    <select id="exchange_metal" name="exchange_metal" style="padding: 6px; border: 1px solid #ddd; border-radius: 4px;">
+                        <option value="none">No exchange</option>
+                        <option value="gold">Old Gold</option>
+                        <option value="silver">Old Silver</option>
+                    </select>
+                    <input type="number" id="exchange_amount" name="exchange_amount" step="0.01" min="0" value="0" placeholder="Amount ₹"
+                           style="padding: 6px; border: 1px solid #ddd; border-radius: 4px; width: 130px;">
+                    <span style="font-size: 14px;">= −₹<span id="exchange-amount">0.00</span></span>
+                </div>
+            </div>
+            <p>Total: <span class="total-amount">₹<span id="total">0.00</span></span></p>
+            <p id="balance-due" style="display: none; color: #d4af37; font-weight: bold; margin-top: 10px;">Balance Due: ₹<span id="balance-amount">0.00</span></p>
+        </div>
+
+        <div class="form-actions">
+            <button type="submit" class="btn btn-gold">Create bill</button>
+            <a href="{{ url_for('invoices') }}" class="btn btn-ghost">Cancel</a>
+        </div>
+    </form>
+</div>
+
+<script src="/static/js/jsqr.min.js"></script>
+<script>
+var GOLD_MAKING_MODE = '{{ settings.gold_making_mode if settings and settings.gold_making_mode else 'percent' }}';
+var SILVER_MAKING_MODE = '{{ settings.silver_making_mode if settings and settings.silver_making_mode else 'flat' }}';
+var GOLD_PCT_DEFAULT = {{ settings.gold_making_charge_percent if settings else 5 }};
+var GOLD_FLAT_DEFAULT = {{ ((settings.gold_making_flat or 0)/100) if settings else 0 }};
+var SILVER_PCT_DEFAULT = {{ settings.silver_making_percent if settings else 0 }};
+var SILVER_FLAT_DEFAULT = {{ ((settings.silver_making_charge_per_10gm or 0)/100) if settings else 150 }};
+var GOLD_MAKING_DEFAULT = (GOLD_MAKING_MODE === 'flat') ? GOLD_FLAT_DEFAULT : GOLD_PCT_DEFAULT;
+var SILVER_MAKING_DEFAULT = (SILVER_MAKING_MODE === 'percent') ? SILVER_PCT_DEFAULT : SILVER_FLAT_DEFAULT;
+var GOLD_RATE = {{ (settings.gold_manual_price or 0)/100 if settings else 0 }};
+var SILVER_RATE = {{ (settings.silver_manual_price or 0)/100 if settings else 0 }};
+var GST_ENABLED = {{ 'true' if settings is none or settings.gst_enabled else 'false' }};
+var SHOW_MAKING = {{ 'true' if settings is none or settings.show_making_charges else 'false' }};
+
+function rowData(row) {
+    var q = function(n) { return row.querySelector('[name="' + n + '"]'); };
+    return {
+        type: q('item_type').value,
+        qty: parseFloat(q('quantity').value) || 0,
+        price: parseFloat(q('unit_price').value) || 0,
+        weight: parseFloat(q('weight').value) || 0,
+        making: parseFloat(q('making_charges').value) || 0,
+        weighed: row.dataset.weighed === '1',   // weighed goods: qty IS grams
+        mode: rowMode(row, q('item_type').value)
+    };
+}
+
+function rowRate(type) {
+    return type === 'gold' ? GOLD_RATE : (type === 'silver' ? SILVER_RATE : 0);
+}
+
+/* grams on the line: weighed goods are sold by the gram, everything else is
+   per-piece weight x quantity */
+function rowGrams(d) {
+    return d.weighed ? d.qty : d.weight * d.qty;
+}
+
+/* Shop default for a metal, in the unit its basis uses (see Settings). */
+function makingDefault(type) {
+    if (type === 'gold') return GOLD_MAKING_MODE === 'flat' ? GOLD_FLAT_DEFAULT : GOLD_PCT_DEFAULT;
+    if (type === 'silver') return SILVER_MAKING_MODE === 'percent' ? SILVER_PCT_DEFAULT : SILVER_FLAT_DEFAULT;
+    return 0;
+}
+
+/* Which basis this row charges on: the row's own choice, else the shop's. */
+function rowMode(row, type) {
+    var f = row ? row.querySelector('[name="making_mode"]') : null;
+    var m = f ? f.value : '';
+    if (m === 'flat' || m === 'percent') return m;
+    return type === 'gold' ? GOLD_MAKING_MODE : (type === 'silver' ? SILVER_MAKING_MODE : 'none');
+}
+
+/* Metal: weight x metal rate + making charges. No separate unit price.
+   percent -> % of metal value · flat -> Rs/g (gold) or Rs/10g (silver). */
+function lineTotal(d) {
+    if (d.type !== 'gold' && d.type !== 'silver') {
+        return { total: d.qty * d.price, makingUsed: 0, metal: 0, grams: 0, mode: 'none' };
+    }
+    var mode = d.mode || (d.type === 'gold' ? GOLD_MAKING_MODE : SILVER_MAKING_MODE),
+        grams = rowGrams(d), rate = rowRate(d.type),
+        metal = grams * rate, makingTotal = 0, makingUsed = 0;
+    makingUsed = d.making || makingDefault(d.type);
+    if (mode === 'flat') {
+        makingTotal = (d.type === 'gold') ? makingUsed * grams : (makingUsed / 10) * grams;
+    } else {
+        makingTotal = metal * (makingUsed / 100);
+    }
+    return { total: metal + makingTotal, makingUsed: makingUsed,
+             metal: metal, grams: grams, mode: mode };
+}
+
+function fmt(n) {
+    return Number(n || 0).toLocaleString('en-IN', {minimumFractionDigits: 2,
+        maximumFractionDigits: 2});
+}
+
+function calculateTotals() {
+    var subtotal = 0, hasMetal = false;
+    document.querySelectorAll('.item-row').forEach(function(row) {
+        var d = rowData(row), r = lineTotal(d);
+        if (d.type === 'gold' || d.type === 'silver') {
+            hasMetal = true;
+            var pf = row.querySelector('.price-field'),
+                note = row.querySelector('.line-note'),
+                rate = rowRate(d.type),
+                making = r.total - r.metal;
+            if (pf) pf.value = (d.qty ? r.metal / d.qty : 0).toFixed(2);
+            if (note) note.innerHTML =
+                '<b>' + (r.grams || 0).toFixed(3) + ' g</b> × ₹' + fmt(rate) + '/g = ₹'
+                + fmt(r.metal)
+                + (making ? ' &nbsp;+&nbsp; making ₹' + fmt(making) : '')
+                + ' &nbsp;=&nbsp; <b>₹' + fmt(r.total) + '</b>';
+        } else {
+            var n2 = row.querySelector('.line-note');
+            if (n2) n2.textContent = '';
+        }
+        row.querySelector('.line-total').value = r.total.toFixed(2);
+        subtotal += r.total;
+    });
+    var gstRate = (hasMetal && GST_ENABLED) ? 3.0 : 0.0,
+        dtype = document.getElementById('discount_type').value,
+        dval = parseFloat(document.getElementById('discount_value').value) || 0,
+        disc = 0;
+    if (dtype === 'percent') disc = subtotal * Math.min(Math.max(dval, 0), 100) / 100;
+    else if (dtype === 'flat') disc = Math.min(Math.max(dval, 0), subtotal);
+    var taxable = subtotal - disc,
+        gstAmount = taxable * gstRate / 100,
+        gross = taxable + gstAmount,
+        exchMetal = document.getElementById('exchange_metal').value,
+        exchAmt = parseFloat(document.getElementById('exchange_amount').value) || 0,
+        exch = (exchMetal === 'none' || exchAmt <= 0) ? 0 : Math.min(exchAmt, gross),
+        total = gross - exch;
+    document.getElementById('subtotal').textContent = subtotal.toFixed(2);
+    document.getElementById('exchange-amount').textContent = exch.toFixed(2);
+    document.getElementById('discount-amount').textContent = disc.toFixed(2);
+    document.getElementById('gst-rate-display').textContent = gstRate;
+    document.getElementById('gst-amount').textContent = gstAmount.toFixed(2);
+    document.getElementById('total').textContent = total.toFixed(2);
+    if (document.getElementById('payment_type').value === 'partial') {
+        var partial = parseFloat(document.getElementById('partial_amount').value) || 0;
+        document.getElementById('balance-due').style.display = 'block';
+        document.getElementById('balance-amount').textContent = (total - partial).toFixed(2);
+    } else {
+        document.getElementById('balance-due').style.display = 'none';
+    }
+}
+
+function toggleMetalFields(select) {
+    var row = select.closest('.item-row'),
+        isMetal = select.value === 'gold' || select.value === 'silver',
+        label = row.querySelector('.making-label'),
+        making = row.querySelector('[name="making_charges"]'),
+        weight = row.querySelector('[name="weight"]'),
+        modeField = row.querySelector('[name="making_mode"]');
+    var weighed = row.dataset.weighed === '1';
+    // Weighed goods are sold by the gram — the quantity IS the weight, so
+    // there is no "weight per unit" box for them.
+    weight.style.display = (isMetal && !weighed) ? '' : 'none';
+    weight.required = isMetal && !weighed;
+    if (!isMetal) weight.value = '';
+    else if (weighed) weight.value = '1';
+    var mode = rowMode(row, select.value);
+    if (modeField) modeField.value = isMetal ? mode : 'none';
+    making.closest('div').style.display = (isMetal && SHOW_MAKING) ? '' : 'none';
+    if (!isMetal) making.value = '';
+    // metal rows have no unit price — it is weight x rate, shown read-only
+    var price = row.querySelector('.price-field');
+    if (price) {
+        price.readOnly = isMetal;
+        price.required = !isMetal;
+        price.placeholder = isMetal ? 'Auto' : 'Price/Unit';
+        price.title = isMetal ? 'Computed: weight (g) x metal rate' : '';
+        if (isMetal) price.classList.add('computed');
+        else price.classList.remove('computed');
+    }
+    var hintHTML = ' <span class="rate-hint"></span>';
+    if (select.value === 'gold') label.innerHTML = (mode === 'flat' ? 'Making ₹/g' : 'Making %') + hintHTML;
+    else if (select.value === 'silver') label.innerHTML = (mode === 'percent' ? 'Making %' : 'Making ₹/10g') + hintHTML;
+    var hint = row.querySelector('.rate-hint');
+    if (hint) hint.textContent = select.value === 'gold' ? '· Au ₹' + fmt(GOLD_RATE) + '/g'
+        : select.value === 'silver' ? '· Ag ₹' + fmt(SILVER_RATE) + '/g' : '';
+}
+
+function bindRow(row) {
+    if (row.dataset.bound) return;
+    row.dataset.bound = '1';
+    row.querySelector('select[name="item_type"]').addEventListener('change', function() {
+        toggleMetalFields(this); calculateTotals();
+    });
+    ['quantity', 'unit_price', 'weight', 'making_charges'].forEach(function(n) {
+        row.querySelector('[name="' + n + '"]').addEventListener('input', calculateTotals);
+    });
+}
+
+function rowHTML(values) {
+    values = values || {};
+    var opts = ['gold', 'silver', 'general'].map(function(t) {
+        var cap = t.charAt(0).toUpperCase() + t.slice(1);
+        return '<option value="' + t + '"' + (values.type === t ? ' selected' : '') + '>' + cap + '</option>';
+    }).join('');
+    return '<input type="text" name="description" placeholder="Description" required value="' + (values.desc || '') + '">' +
+        '<select name="item_type">' + opts + '</select>' +
+        '<input type="number" name="quantity" placeholder="Qty" step="any" min="0.01" value="1" required>' +
+        '<input type="number" name="weight" placeholder="Weight (g)" step="0.01" min="0" class="metal-field" value="' + (values.weight || '') + '">' +
+        '<div' + (SHOW_MAKING ? '' : ' style="display:none"') + '><label class="making-label" style="font-size: 12px; color: #666;">Making % <span class="rate-hint"></span></label>' +
+        '<input type="number" name="making_charges" placeholder="0" step="0.01" min="0" class="making-field">' +
+        '<input type="hidden" name="making_mode" class="making-mode-field" value="' + (values.mode || '') + '"></div>' +
+        '<input type="number" name="unit_price" class="price-field" placeholder="Price/Unit" step="0.01" min="0" required value="' + (values.price || '') + '">' +
+        '<input type="hidden" name="product_code" class="product-code-field" value="' + (values.code || '') + '">' +
+        '<input type="text" class="line-total" placeholder="Total" readonly style="background-color: #f8f9fa; width: 80px;">' +
+        '<button type="button" class="btn btn-danger btn-sm" onclick="removeItem(this)">×</button>' +
+        '<div class="line-note"></div>';
+}
+
+function addItem() {
+    var row = document.createElement('div');
+    row.className = 'item-row';
+    row.style.cssText = 'display: grid; grid-template-columns: 2fr 1fr 1fr 1fr 1fr 1fr auto; gap: 8px; margin-bottom: 10px; align-items: center;';
+    row.innerHTML = rowHTML({});
+    document.getElementById('items-container').appendChild(row);
+    bindRow(row);
+    toggleMetalFields(row.querySelector('select[name="item_type"]'));
+    var w = row.querySelector('[name="weight"]');
+    if (w) w.focus();
+    calculateTotals();
+}
+
+function addProductByCode(scanned) {
+    var code = (scanned || document.getElementById('product-code').value).trim();
+    // QR payload is "barcode|name|weight|price" — product code is the first segment
+    if (code.indexOf('|') !== -1) code = code.split('|')[0].trim();
+    if (!code) return;
+    fetch('/products/scan/' + encodeURIComponent(code))
+        .then(function(r) {
+            if (!r.ok) throw new Error('HTTP ' + r.status);
+            return r.json();
+        })
+        .then(function(data) {
+            if (data.success) {
+                addProductToForm(data.product);
+                document.getElementById('product-code').value = '';
+                sayScan('Added ' + data.product.name + ' (' + code + ')');
+            } else {
+                sayScan('No product with code "' + code + '" — check the tag.');
+                alert('Product not found with this code');
+            }
+        })
+        .catch(function() {
+            /* An expired session redirects to the login page, so r.json()
+               throws — without this the scanner just went quiet. */
+            sayScan('Could not look up "' + code + '" — still signed in?');
+        });
+}
+
+function addProductToForm(product) {
+    var weighed = product.unit === 'g';
+    var row = document.createElement('div');
+    row.className = 'item-row';
+    row.style.cssText = 'display: grid; grid-template-columns: 2fr 1fr 1fr 1fr 1fr 1fr auto; gap: 8px; margin-bottom: 10px; align-items: center;';
+    // weighed goods have no weight-per-unit — their unit is one gram
+    row.innerHTML = rowHTML({ desc: product.name, type: product.item_type,
+        weight: weighed ? '' : product.weight_per_unit, price: product.unit_price,
+        code: product.barcode || '', mode: product.making_mode || '' });
+    document.getElementById('items-container').appendChild(row);
+    bindRow(row);
+    if (weighed) row.dataset.weighed = '1';
+    var sel = row.querySelector('select[name="item_type"]');
+    toggleMetalFields(sel);
+    if (product.unit === 'g') {
+        var qinput = row.querySelector('[name="quantity"]');
+        qinput.placeholder = 'Qty (grams)';
+        qinput.title = 'Sold by weight — enter grams. In stock: ' +
+            (product.stock_weight || 0) + ' g';
+        sayScan('Weighed item: enter grams (' + (product.stock_weight || 0) + ' g in stock)');
+    }
+    calculateTotals();
+}
+
+function removeItem(button) {
+    var container = document.getElementById('items-container');
+    if (container.children.length > 1) {
+        button.closest('.item-row').remove();
+        calculateTotals();
+    }
+}
+
+document.getElementById('payment_type').addEventListener('change', function() {
+    var show = this.value === 'partial';
+    document.getElementById('partial_payment_section').style.display = show ? 'block' : 'none';
+    document.getElementById('partial_amount').required = show;
+    if (!show) document.getElementById('partial_amount').value = '';
+    calculateTotals();
+});
+document.getElementById('partial_amount').addEventListener('input', calculateTotals);
+document.getElementById('discount_type').addEventListener('change', calculateTotals);
+document.getElementById('discount_value').addEventListener('input', calculateTotals);
+document.getElementById('exchange_metal').addEventListener('change', function() {
+    if (this.value === 'none') document.getElementById('exchange_amount').value = 0;
+    calculateTotals();
+});
+document.getElementById('exchange_amount').addEventListener('input', calculateTotals);
+document.getElementById('product-code').addEventListener('keypress', function(e) {
+    if (e.key === 'Enter') { e.preventDefault(); addProductByCode(); }
+});
+document.addEventListener('DOMContentLoaded', function() {
+    document.querySelectorAll('.item-row').forEach(function(row) {
+        bindRow(row);
+        toggleMetalFields(row.querySelector('select[name="item_type"]'));
+    });
+    initClientSearch();
+    initQrUpload();
+    calculateTotals();
+});
+
+/* ---------- client search ---------- */
+function initClientSearch() {
+    var box = document.getElementById('client-search'),
+        sel = document.getElementById('client_id'),
+        hint = document.getElementById('client-hint');
+    var gstinBox = document.getElementById('client_gstin'),
+        gstinHint = document.getElementById('gstin-hint');
+    function showHint() {
+        var opt = sel.options[sel.selectedIndex];
+        hint.textContent = (opt && opt.value)
+            ? 'Outstanding balance: ₹' + (opt.dataset.balance || '0.00') : '';
+        if (gstinBox && opt) {
+            var g = (opt.dataset.gstin || '').trim();
+            gstinBox.value = g;
+            gstinHint.textContent = g ? 'From the client record — edit to override for this bill.'
+                : 'No GSTIN saved for this client. Leave blank for a B2C bill.';
+        }
+    }
+    sel.addEventListener('change', showHint); showHint();
+    box.addEventListener('input', function() {
+        var q = box.value.trim().toLowerCase(), first = null, visible = 0;
+        Array.prototype.forEach.call(sel.options, function(o) {
+            if (!o.value) return;
+            var hit = !q || (o.dataset.search || o.text.toLowerCase()).indexOf(q) !== -1;
+            o.style.display = hit ? '' : 'none';
+            if (hit) { visible++; if (!first) first = o; }
+        });
+        hint.textContent = q ? visible + ' match' + (visible === 1 ? '' : 'es') + ' — Enter to pick first' : '';
+        box.dataset.first = first ? first.value : '';
+        if (!q) showHint();
+    });
+    box.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter' && box.dataset.first) {
+            e.preventDefault();
+            sel.value = box.dataset.first; showHint();
+        }
+    });
+}
+
+/* ---------- layered code scanner ----------
+   Layer 1: native BarcodeDetector (QR + 1D, offline, secure context only)
+   Layer 2: bundled jsQR served locally (QR, works everywhere, offline)
+   Layer 3: Quagga2 from CDN on demand (1D bars, needs internet)
+   Every outcome is narrated in #scan-msg — silence is a bug. */
+var scanStream = null, scanRaf = null, scanFacing = "environment";
+var quaggaPromise = null;
+
+function sayScan(msg) {
+    var el = document.getElementById("scan-msg");
+    if (el) el.textContent = msg;
+}
+
+function scanDiagnosis() {
+    var parts = [];
+    parts.push("BarcodeDetector: " + (("BarcodeDetector" in window) ? "yes" : "NO"));
+    parts.push("secure page: " + (window.isSecureContext ? "yes" : "NO (open via localhost/HTTPS)") + "");
+    parts.push("jsQR backup: " + ((typeof jsQR === "function") ? "yes" : "NO"));
+    return parts.join(" · ");
+}
+
+function nativeDetector() {
+    if ("BarcodeDetector" in window) {
+        try { return new BarcodeDetector(); }
+        catch (e) {
+            try { return new BarcodeDetector({ formats: ["qr_code"] }); }
+            catch (e2) { return null; }
+        }
+    }
+    return null;
+}
+
+function loadQuagga() {
+    if (window.Quagga) return Promise.resolve(true);
+    if (quaggaPromise) return quaggaPromise;
+    sayScan("Loading 1D-barcode engine… (needs internet once)");
+    var urls = [
+        "https://cdn.jsdelivr.net/npm/@ericblade/quagga2@1.8.3/dist/quagga.min.js",
+        "https://cdn.jsdelivr.net/npm/quagga@0.12.1/dist/quagga.min.js"
+    ];
+    quaggaPromise = new Promise(function(resolve) {
+        function attempt(i) {
+            if (i >= urls.length) { sayScan("1D engine unavailable offline."); resolve(false); return; }
+            var s = document.createElement("script");
+            var done = false;
+            s.onload = function() { if (!done) { done = true; resolve(!!window.Quagga); } };
+            s.onerror = function() { if (!done) { done = true; attempt(i + 1); } };
+            s.src = urls[i];
+            setTimeout(function() { if (!done) { done = true; s.remove(); attempt(i + 1); } }, 9000);
+            document.head.appendChild(s);
+        }
+        attempt(0);
+    });
+    return quaggaPromise;
+}
+
+function canvasOf(src, sx, sy, sw, sh, dw, dh) {
+    var cv = document.createElement("canvas");
+    cv.width = Math.max(1, Math.round(dw || sw));
+    cv.height = Math.max(1, Math.round(dh || sh));
+    cv.getContext("2d").drawImage(src, sx, sy, sw, sh, 0, 0, cv.width, cv.height);
+    return cv;
+}
+
+/* Try every engine on one canvas. Resolves raw string or null. */
+function decodeCanvas(cv) {
+    var det = nativeDetector();
+    var p = Promise.resolve(null);
+    if (det) {
+        p = det.detect(cv).then(function(f) {
+            return (f && f.length) ? (f[0].rawValue || null) : null;
+        }).catch(function() { return null; });
+    }
+    return p.then(function(v) {
+        if (v) return { value: v, engine: "device" };
+        if (typeof jsQR === "function") {
+            try {
+                var ctx = cv.getContext("2d"),
+                    d = ctx.getImageData(0, 0, cv.width, cv.height),
+                    found = jsQR(d.data, d.width, d.height);
+                if (found && found.data) return { value: found.data, engine: "jsQR" };
+            } catch (e) { /* fall through to 1D */ }
+        }
+        return loadQuagga().then(function(ok) {
+            if (!ok || !window.Quagga) return null;
+            return new Promise(function(resolve) {
+                try {
+                    window.Quagga.decodeSingle({
+                        src: cv.toDataURL(),
+                        numOfWorkers: 0,
+                        decoder: { readers: ["code_128_reader", "ean_reader", "code_39_reader"] },
+                        locate: true
+                    }, function(result) {
+                        if (result && result.codeResult && result.codeResult.code)
+                            resolve({ value: result.codeResult.code, engine: "quagga" });
+                        else resolve(null);
+                    });
+                } catch (e) { resolve(null); }
+            });
+        });
+    });
+}
+
+function decodeImageVariants(img) {
+    var w = img.naturalWidth, h = img.naturalHeight;
+    var variants = [[0, 0, w, h, 0, 0]];
+    if (w > 400 && h > 400) {
+        var cw = w / 2, ch = h / 2;
+        variants.push([(w - cw) / 2, (h - ch) / 2, cw, ch, cw * 2, ch * 2]);
+    }
+    var chain = Promise.resolve(null);
+    variants.forEach(function(v) {
+        chain = chain.then(function(hit) {
+            if (hit) return hit;
+            return decodeCanvas(canvasOf(img, v[0], v[1], v[2], v[3], v[4] || v[2], v[5] || v[3]));
+        });
+    });
+    return chain;
+}
+
+function openScanner() {
+    document.getElementById("scan-modal").style.display = "flex";
+    startCamera();
+}
+
+function closeScanner() {
+    document.getElementById("scan-modal").style.display = "none";
+    stopCamera();
+}
+
+function stopCamera() {
+    if (scanRaf) cancelAnimationFrame(scanRaf);
+    scanRaf = null;
+    if (scanStream) scanStream.getTracks().forEach(function(t) { t.stop(); });
+    scanStream = null;
+    var v = document.getElementById("scan-video");
+    if (v) v.srcObject = null;
+}
+
+/* Walking away from the page must not leave the camera light on. */
+window.addEventListener("pagehide", stopCamera);
+
+function switchCamera() {
+    scanFacing = (scanFacing === "environment") ? "user" : "environment";
+    startCamera();
+}
+
+function startCamera() {
+    stopCamera();
+    var video = document.getElementById("scan-video"),
+        status = document.getElementById("scan-status");
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        status.textContent = "Camera needs localhost/HTTPS (" + scanDiagnosis() + "). Use Upload instead.";
+        sayScan("Camera blocked here — use Upload photo or type the code.");
+        return;
+    }
+    status.textContent = "Starting camera…";
+    navigator.mediaDevices.getUserMedia({ video: { facingMode: scanFacing }, audio: false })
+        .then(function(stream) {
+            scanStream = stream; video.srcObject = stream;
+            return video.play();
+        })
+        .then(function() {
+            status.textContent = "Point at the QR or barcode…";
+            cameraLoop(video, status, Date.now());
+        })
+        .catch(function(err) {
+            status.textContent = "Camera blocked (" + (err && err.name) + "). Allow access, or Upload/type instead.";
+            sayScan("Camera blocked — use Upload photo or type the code.");
+        });
+}
+
+/* Camera frames: native detect, else jsQR video loop for QR. */
+function cameraLoop(video, status, started) {
+    var det = nativeDetector(), hinted = false;
+    var useJsQR = !det && (typeof jsQR === "function");
+    if (!det && !useJsQR) {
+        status.textContent = "Live scan unsupported here (" + scanDiagnosis() + "). Use Upload instead.";
+        return;
+    }
+    if (useJsQR) status.textContent = "Point at the QR code… (barcode bars: use Upload)";
+    function tick() {
+        if (!scanStream) return;
+        if (!hinted && Date.now() - started > 8000) {
+            hinted = true;
+            status.textContent = "No code yet — closer, steady, good light. " +
+                (useJsQR ? "Camera reads QR; bars work via Upload." : "Both QR and bars should read.");
+        }
+        if (det) {
+            det.detect(video).then(function(found) {
+                if (found && found.length) {
+                    var val = found[0].rawValue || "";
+                    status.textContent = "Found: " + val;
+                    sayScan("Found: " + val);
+                    closeScanner(); addProductByCode(val); return;
+                }
+                scanRaf = requestAnimationFrame(tick);
+            }).catch(function() { scanRaf = requestAnimationFrame(tick); });
+        } else {
+            try {
+                var cv = canvasOf(video, 0, 0, video.videoWidth || 640, video.videoHeight || 480);
+                var ctx = cv.getContext("2d"),
+                    d = ctx.getImageData(0, 0, cv.width, cv.height),
+                    found = jsQR(d.data, d.width, d.height);
+                if (found && found.data) {
+                    status.textContent = "Found: " + found.data;
+                    sayScan("Found: " + found.data);
+                    closeScanner(); addProductByCode(found.data); return;
+                }
+            } catch (e) { /* next frame */ }
+            setTimeout(function() { scanRaf = requestAnimationFrame(tick); }, 250);
+        }
+    }
+    tick();
+}
+
+function initQrUpload() {
+    document.getElementById("qr-upload").addEventListener("change", function(e) {
+        var f = e.target.files[0];
+        e.target.value = "";
+        if (!f) return;
+        sayScan("Reading photo… (QR → device/jsQR, bars → 1D engine)");
+        var img = new Image();
+        img.onload = function() {
+            decodeImageVariants(img).then(function(hit) {
+                URL.revokeObjectURL(img.src);
+                if (hit && hit.value) {
+                    sayScan("Found via " + hit.engine + ": " + hit.value);
+                    addProductByCode(hit.value);
+                } else {
+                    sayScan("No code in photo (" + scanDiagnosis() + ") — retake closer/sharper.");
+                    alert("No QR/barcode found. Take the photo closer, steady, well-lit — or type the code.");
+                }
+            }).catch(function() {
+                URL.revokeObjectURL(img.src);
+                sayScan("Could not read that photo.");
+                alert("Could not read that photo.");
+            });
+        };
+        img.onerror = function() {
+            sayScan("Could not open that file as a photo.");
+            URL.revokeObjectURL(img.src);
+        };
+        img.src = URL.createObjectURL(f);
+    });
+}
+
+</script>
+{% endblock %}

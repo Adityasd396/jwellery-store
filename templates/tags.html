@@ -1,0 +1,923 @@
+{% extends "base.html" %}
+{% from "tag_design.html" import tag_art %}
+{% block title %}Tags{% endblock %}
+
+{% block head %}
+{# The whole point of this page is that the right-hand pane *is* the printed
+   tag, so pull in the same stylesheet the print views use. thermal=False
+   keeps the app's own paper size and body styling. #}
+{% from "tag_design.html" import tag_css %}
+{{ tag_css(thermal=False,
+           first_w=tpl.width_mm or 50,
+           first_h=tpl.height_mm or 25,
+           first_tail=(tpl.tail_mm or 16) if tpl.shape == 'tail' else 0) }}
+<style>
+/* tag_css styles <body> and @page for the standalone print views — put the
+   designer's own page back the way base.html had it. */
+body{background:var(--bg)}
+@media print{@page{size:auto;margin:12mm}}
+.tag-stage .jt{margin:0}
+</style>
+<style>
+.tag-stage{background:#f5f5f5;border:1px dashed #d9d2c4;border-radius:12px;
+  padding:22px;display:flex;justify-content:center;overflow:auto;min-height:140px}
+.tag-stage .jt{box-shadow:0 2px 10px rgba(0,0,0,.18)}
+.toggle-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:0 14px}
+.toggle-grid .check{margin-bottom:8px}
+.pick-list{max-height:340px;overflow:auto;border:1px solid var(--line);
+  border-radius:10px;padding:10px 12px}
+.pick-list label{display:flex;gap:8px;align-items:center;padding:4px 0;font-size:13.5px}
+.presets{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px}
+.presets button{padding:6px 10px;border:1px solid #ddd6c8;border-radius:7px;
+  background:#fff;cursor:pointer;font-size:12.5px}
+.presets button:hover{background:#faf7f0;border-color:var(--gold-2)}
+.bar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px}
+.shape-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px}
+.shape-pick{display:flex;gap:10px;align-items:center;padding:10px 12px;
+  border:1.5px solid #e6dfd0;border-radius:10px;cursor:pointer;
+  background:#fff;font-size:13px}
+.shape-pick.on{border-color:var(--gold-2);background:#fdf8ec}
+.shape-pick .mini{font-size:11.5px;color:#7a6f5d;margin-top:3px}
+.shape-pick svg{flex:0 0 76px;height:34px;width:auto}
+.sample-picker{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px}
+.sample-pick{padding:5px 9px;border:1px solid #e0d8c4;border-radius:14px;
+  background:#fff;cursor:pointer;font-size:12px}
+.sample-pick.on{background:var(--gold-2);color:#fff;border-color:var(--gold-2)}
+.tail-only{display:none}
+.tail-only.show{display:block}
+/* 3-up row for the small numeric controls */
+.field-grid.three{grid-template-columns:repeat(3,minmax(0,1fr))}
+.warn-box{background:#fff6e5;border:1px solid #f0d9a8;border-radius:9px;
+  padding:9px 12px;font-size:12.5px;color:#7a5a12;margin-top:8px}
+.warn-box b{color:#8a5b00}
+.quick-row{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+.quick-row button{padding:5px 10px;border:1px solid #ddd6c8;border-radius:7px;
+  background:#fff;cursor:pointer;font-size:12.5px}
+.quick-row button:hover{background:#faf7f0;border-color:var(--gold-2)}
+.readout{font-size:12.5px;color:#6b6257;margin:6px 0 0}
+.readout b{color:#8a5b00}
+.setup-note{background:#fffdf6;border:1px solid #e2d9c3;border-radius:9px;
+  padding:9px 12px;font-size:12.5px;color:#5c5344;margin-top:10px}
+.setup-note .paper{font-size:14px;font-weight:700;color:#8a5b00}
+.setup-note ol{margin:6px 0 0 18px;padding:0}
+.setup-note li{margin-bottom:2px}
+.setup-note a{color:#8a5b00}
+/* --- preview-only placeholder barcode (CSS stripes) --- */
+.jt-bc-mock{display:block;width:var(--bcw);height:var(--bch);
+  background:repeating-linear-gradient(90deg,#000 0 1px,#fff 1px 3px,#000 3px 5px,#fff 5px 7px,#000 7px 8px,#fff 8px 10px);
+  border:.2mm solid #555}
+/* --- preview-only placeholder QR (CSS grid squares) --- */
+.jt-qr-mock{display:inline-block;width:var(--qr);height:var(--qr);background:#fff;
+  background-image:
+    linear-gradient(#000,#000),
+    linear-gradient(#000,#000),
+    linear-gradient(#000,#000),
+    linear-gradient(#000,#000);
+  background-size:18% 18%,18% 18%,18% 18%,18% 18%;
+  background-position:0 0,82% 0,0 82%,82% 82%;
+  background-repeat:no-repeat;border:.3mm solid #000;position:relative}
+.jt-qr-mock::before,.jt-qr-mock::after{content:"";position:absolute;
+  width:22%;height:22%;border:1mm solid #000}
+.jt-qr-mock::before{top:6%;left:6%}
+.jt-qr-mock::after{top:6%;right:6%}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Tags</h1>
+    <div class="sub">Design jewellery tags once, print them on a thermal printer or a sheet</div>
+  </div>
+  <div class="page-actions">
+    <a href="{{ url_for('tag_designer', new=1) }}" class="btn btn-gold">+ New design</a>
+    <a href="{{ url_for('products') }}" class="btn btn-ghost">Back to stock</a>
+  </div>
+</div>
+
+<div class="grid-2">
+  <div>
+    <div class="card">
+      <div class="card-head">
+        <h3>{% if tpl.id %}Edit “{{ tpl.name }}”{% else %}New design{% endif %}</h3>
+        <span class="hint">{% if tpl.id %}design #{{ tpl.id }}{% else %}not saved yet{% endif %} · preview updates as you type</span>
+      </div>
+      <form method="POST" action="{{ url_for('save_tag_template') }}" id="design-form">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="tpl_id" value="{{ tpl.id or '' }}">
+
+        <div class="field">
+          <label for="name">Design name</label>
+          <input type="text" id="name" name="name" value="{{ tpl.name }}" required>
+        </div>
+
+        <div class="field-grid">
+          <div class="field">
+            <label for="scope">Applies to</label>
+            <select id="scope" name="scope" onchange="toggleScope()">
+              <option value="default" {% if tpl.scope != 'category' %}selected{% endif %}>Every item (default)</option>
+              <option value="category" {% if tpl.scope == 'category' %}selected{% endif %}>One category only</option>
+            </select>
+            <div class="help">Category designs win over the default one.</div>
+          </div>
+          <div class="field" id="cat-field" {% if tpl.scope != 'category' %}style="display:none"{% endif %}>
+            <label for="category">Category</label>
+            <input type="text" id="category" name="category" list="tag-cats"
+                   value="{{ tpl.category or '' }}" placeholder="e.g. Ring">
+            <datalist id="tag-cats">
+              {% for c in categories %}<option value="{{ c }}"></option>{% endfor %}
+            </datalist>
+          </div>
+        </div>
+
+        {# --- SHAPE --------------------------------------------------- #}
+        <div class="card-head" style="margin-top:8px"><h3>Shape</h3>
+          <span class="hint">the two label stocks we print on</span></div>
+        <input type="hidden" id="shape" name="shape" value="{{ tpl.shape or 'rectangle' }}">
+        <div class="shape-grid" id="shape-grid">
+          <label class="shape-pick {% if tpl.shape != 'tail' %}on{% endif %}"
+                 data-shape="rectangle" onclick="setShape('rectangle')">
+            <svg viewBox="0 0 76 34" aria-hidden="true">
+              <rect x="2" y="5" width="72" height="24" fill="#fff" stroke="#222" stroke-width="1.6"/>
+            </svg>
+            <div>
+              <strong>Rectangle</strong>
+              <div class="mini">Plain label — thermal sticker or A4 sheet.</div>
+            </div>
+          </label>
+          <label class="shape-pick {% if tpl.shape == 'tail' %}on{% endif %}"
+                 data-shape="tail" onclick="setShape('tail')">
+            <svg viewBox="0 0 76 34" aria-hidden="true">
+              <rect x="2" y="5" width="46" height="24" fill="#fff" stroke="#222" stroke-width="1.6"/>
+              <rect x="48" y="12" width="26" height="10" fill="#fff" stroke="#222" stroke-width="1.6"/>
+            </svg>
+            <div>
+              <strong>Rectangle + tail</strong>
+              <div class="mini">Body plus a narrow tail out of the right edge — the rat-tail / dori tag.</div>
+            </div>
+          </label>
+        </div>
+        <div class="tail-only {% if tpl.shape == 'tail' %}show{% endif %}" id="tail-fields">
+          <div class="field-grid three">
+            <div class="field">
+              <label for="tail_mm">Tail length (mm)</label>
+              <input type="number" id="tail_mm" name="tail_mm" step="1" min="4" max="120"
+                     value="{{ tpl.tail_mm if tpl.tail_mm is not none else 16 }}">
+              <div class="help">Follows the tag length when one is set.</div>
+            </div>
+            <div class="field">
+              <label for="tail_h_mm">Tail height (mm)</label>
+              <input type="number" id="tail_h_mm" name="tail_h_mm" step="0.5" min="0" max="300"
+                     value="{{ tpl.tail_h_mm or 0 }}">
+              <div class="help" id="tailh-auto">0 = auto ({{ tail_h_mm|round(1) }} mm)</div>
+            </div>
+            <div class="field">
+              <label for="tail_pos">Tail position</label>
+              <select id="tail_pos" name="tail_pos">
+                {% for tp in tail_positions %}
+                <option value="{{ tp }}" {% if (tpl.tail_pos or 'middle') == tp %}selected{% endif %}>{{ tp|capitalize }}</option>
+                {% endfor %}
+              </select>
+            </div>
+          </div>
+          <div class="field-grid">
+            <div class="field">
+              <label for="tail_hole_mm">Hole in tail (mm)</label>
+              <input type="number" id="tail_hole_mm" name="tail_hole_mm" step="0.5" min="0" max="10"
+                     value="{{ tpl.tail_hole_mm or 0 }}">
+              <div class="help">Diameter of a punched hole for string. 0 = no hole.</div>
+            </div>
+            <div class="field"></div>
+          </div>
+        </div>
+
+        {# --- SIZE --------------------------------------------------- #}
+        <div class="card-head" style="margin-top:8px"><h3>Size (mm)</h3>
+          <span class="hint" id="total-w-hint"></span></div>
+        <div class="presets">
+          {% for label, w, h in presets %}
+          <button type="button" onclick="setSize({{ w }}, {{ h }})">{{ label }}</button>
+          {% endfor %}
+        </div>
+        <div class="field-grid three">
+          <div class="field">
+            <label for="width_mm">Body length (mm)</label>
+            <input type="number" id="width_mm" name="width_mm" step="0.5" min="10" max="300"
+                   value="{{ tpl.width_mm or 50 }}" required>
+            <div class="help">The printed part. On a plain rectangle this is the whole tag.</div>
+          </div>
+          <div class="field">
+            <label for="height_mm">Tag height (mm)</label>
+            <input type="number" id="height_mm" name="height_mm" step="0.5" min="5" max="300"
+                   value="{{ tpl.height_mm or 25 }}" required>
+            <div class="help">How tall the strip is.</div>
+          </div>
+          <div class="field tail-only {% if tpl.shape == 'tail' %}show{% endif %}">
+            <label for="total_mm">Tag length (mm)</label>
+            <input type="number" id="total_mm" name="total_mm" step="1" min="0" max="400"
+                   value="{{ tpl.total_mm or 0 }}">
+            <div class="help">Body + tail — the full label. 0 = let body + tail decide.</div>
+          </div>
+        </div>
+        <p class="readout" id="size-readout"></p>
+        <label class="check">
+          <input type="checkbox" id="is_thermal" name="is_thermal" {% if tpl.is_thermal %}checked{% endif %}>
+          <span>Thermal roll mode — one label per page (turn off to print a sheet)</span>
+        </label>
+
+        {# --- STYLE -------------------------------------------------- #}
+        <div class="card-head" style="margin-top:8px"><h3>Look</h3></div>
+        <div class="field-grid">
+          <div class="field">
+            <label for="style">Type style</label>
+            <select id="style" name="style">
+              {% for s in styles %}
+              <option value="{{ s }}" {% if tpl.style == s %}selected{% endif %}>{{ s|capitalize }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="field">
+            <label for="border">Border</label>
+            <select id="border" name="border">
+              {% for b in ['solid','double','dashed','none'] %}
+              <option value="{{ b }}" {% if tpl.border == b %}selected{% endif %}>{{ b|capitalize }}</option>
+              {% endfor %}
+            </select>
+          </div>
+        </div>
+        <div class="field-grid">
+          <div class="field">
+            <label for="font_name">Name size (pt)</label>
+            <input type="number" id="font_name" name="font_name" step="0.5" min="4" max="40"
+                   value="{{ tpl.font_name or 10 }}">
+          </div>
+          <div class="field">
+            <label for="font_detail">Detail size (pt)</label>
+            <input type="number" id="font_detail" name="font_detail" step="0.5" min="3" max="30"
+                   value="{{ tpl.font_detail or 8 }}">
+          </div>
+        </div>
+
+        {# --- SPACING & ELEMENT SIZES --------------------------------- #}
+        <div class="card-head" style="margin-top:8px"><h3>Spacing &amp; sizes</h3>
+          <span class="hint">tune the tag to your label stock</span></div>
+        <div class="field-grid three">
+          <div class="field">
+            <label for="pad_mm">Padding (mm)</label>
+            <input type="number" id="pad_mm" name="pad_mm" step="0.1" min="0" max="20"
+                   value="{{ tpl.pad_mm if tpl.pad_mm is not none else 1.4 }}">
+            <div class="help">Top &amp; bottom.</div>
+          </div>
+          <div class="field">
+            <label for="pad_h_mm">Side padding (mm)</label>
+            <input type="number" id="pad_h_mm" name="pad_h_mm" step="0.1" min="0" max="20"
+                   value="{{ tpl.pad_h_mm if tpl.pad_h_mm is not none else 2 }}">
+            <div class="help">Left &amp; right.</div>
+          </div>
+          <div class="field">
+            <label for="gap_mm">Line spacing (mm)</label>
+            <input type="number" id="gap_mm" name="gap_mm" step="0.1" min="0" max="10"
+                   value="{{ tpl.gap_mm if tpl.gap_mm is not none else 0.5 }}">
+            <div class="help">Gap between lines.</div>
+          </div>
+        </div>
+        <div class="field-grid three">
+          <div class="field">
+            <label for="qr_mm">QR size (mm)</label>
+            <input type="number" id="qr_mm" name="qr_mm" step="0.5" min="0" max="100"
+                   value="{{ tpl.qr_mm or 0 }}">
+            <div class="help" id="qr-auto">0 = auto ({{ qr_mm|round(1) }} mm)</div>
+          </div>
+          <div class="field">
+            <label for="bc_h_mm">Barcode height (mm)</label>
+            <input type="number" id="bc_h_mm" name="bc_h_mm" step="0.5" min="0" max="60"
+                   value="{{ tpl.bc_h_mm or 0 }}">
+            <div class="help" id="bc-auto">0 = auto ({{ bc_h_mm|round(1) }} mm)</div>
+          </div>
+          <div class="field">
+            <label for="bc_w_pct">Barcode width (%)</label>
+            <input type="number" id="bc_w_pct" name="bc_w_pct" step="5" min="10" max="100"
+                   value="{{ tpl.bc_w_pct or 100 }}">
+            <div class="help">Of the text column.</div>
+          </div>
+        </div>
+
+        {# --- FIELDS ------------------------------------------------- #}
+        <div class="card-head" style="margin-top:8px"><h3>What prints</h3></div>
+        <div class="quick-row">
+          <button type="button" onclick="setAllFields(true)">Show everything</button>
+          <button type="button" onclick="setAllFields(false)">Hide everything</button>
+          <button type="button" onclick="setEssentialFields()">Jewellery essentials</button>
+        </div>
+        <div class="toggle-grid" style="margin-top:8px">
+          <label class="check"><input type="checkbox" name="show_name" {% if tpl.show_name %}checked{% endif %}><span>Item name</span></label>
+          <label class="check"><input type="checkbox" name="show_category" {% if tpl.show_category %}checked{% endif %}><span>Category</span></label>
+          <label class="check"><input type="checkbox" name="show_metal" {% if tpl.show_metal %}checked{% endif %}><span>Metal</span></label>
+          <label class="check"><input type="checkbox" name="show_weight" {% if tpl.show_weight %}checked{% endif %}><span>Weight</span></label>
+          <label class="check"><input type="checkbox" name="show_price" {% if tpl.show_price %}checked{% endif %}><span>Price</span></label>
+          <label class="check"><input type="checkbox" name="show_code" {% if tpl.show_code %}checked{% endif %}><span>Product code</span></label>
+          <label class="check"><input type="checkbox" name="show_sku" {% if tpl.show_sku %}checked{% endif %}><span>SKU</span></label>
+          <label class="check"><input type="checkbox" name="show_barcode" {% if tpl.show_barcode %}checked{% endif %}><span>Barcode</span></label>
+          <label class="check"><input type="checkbox" name="show_qr" {% if tpl.show_qr %}checked{% endif %}><span>QR code</span></label>
+          <label class="check"><input type="checkbox" name="show_firm" {% if tpl.show_firm %}checked{% endif %}><span>Firm name</span></label>
+        </div>
+        <div class="warn-box" id="empty-warn" style="display:none">
+          <b>Nothing will print.</b> Every field above is unticked, so this design
+          produces a blank label. Use <b>Show everything</b> or
+          <b>Jewellery essentials</b>.
+        </div>
+        <div class="warn-box" id="nofit-warn" style="display:none">
+          <b>This may not fit.</b> The text is taller than the tag, so lines will
+          be clipped. Try a taller tag, smaller type, or less padding.
+        </div>
+        <div class="help" style="margin-top:8px">
+          The invoice camera can only read a <strong>QR code</strong> on iPhone / iPad — Safari has no
+          barcode detector, so live scanning there is QR-only. Tick “QR code” if the counter scans
+          tags with a phone; the printed bars still work on Android and desktop Chrome.
+        </div>
+
+        <div class="field-grid">
+          <div class="field">
+            <label for="note">Footer line (optional)</label>
+            <input type="text" id="note" name="note" maxlength="80" value="{{ tpl.note or '' }}"
+                   placeholder="e.g. 22K hallmarked">
+          </div>
+          <div class="field">
+            <label for="copies">Copies per item</label>
+            <input type="number" id="copies" name="copies" min="1" max="10" value="{{ tpl.copies or 1 }}">
+            <div class="help">Used when printing with “each item's own design”.</div>
+          </div>
+        </div>
+
+        <div class="form-actions">
+          <button type="submit" class="btn btn-success">Save design</button>
+          {% if tpl.id %}
+          <a class="btn btn-ghost" href="{{ url_for('tag_designer') }}">Cancel</a>
+          <a class="btn btn-primary"
+             href="{{ url_for('print_tags', tpl=tpl.id, copies=tpl.copies or 1, layout='roll' if tpl.is_thermal else 'sheet') }}">Print all with this</a>
+          {% endif %}
+        </div>
+      </form>
+      {% if tpl.id %}
+      <form method="POST" class="inline" style="margin-top:10px"
+            action="{{ url_for('delete_tag_template', tpl_id=tpl.id) }}"
+            data-confirm="Delete the design “{{ tpl.name }}”?">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button type="submit" class="btn btn-danger btn-sm">Delete this design</button>
+      </form>
+      {% endif %}
+    </div>
+  </div>
+
+  <div>
+    <div class="card">
+      <div class="card-head"><h3>Live preview</h3>
+        <span class="hint" id="preview-hint">{{ sample.name if sample else 'add a product to preview' }}</span></div>
+
+      {% if products %}
+      <div class="field" style="margin-bottom:8px">
+        <label>Pretend this product is being tagged</label>
+        <div class="sample-picker" id="sample-picker">
+          {% for p in products[:12] %}
+          <span class="sample-pick {% if loop.first %}on{% endif %}"
+                data-id="{{ p.id }}"
+                data-name="{{ p.name|e }}"
+                data-category="{{ (p.category or '')|e }}"
+                data-item-type="{{ p.item_type|e }}"
+                data-unit="{{ (p.unit or 'pcs')|e }}"
+                data-weight="{{ p.weight_per_unit or 0 }}"
+                data-price="{{ p.unit_price or 0 }}"
+                data-barcode="{{ (p.barcode or '')|e }}"
+                data-sku="{{ (p.sku or '')|e }}"
+                onclick="setSample(this)">{{ p.name }}</span>
+          {% endfor %}
+        </div>
+        <div class="help">Pick a product to test the design against — switch back and forth to compare.</div>
+      </div>
+      {% endif %}
+
+      <div class="tag-stage" id="tag-stage">{% if sample %}{{ tag_art(tpl, sample, settings, sample_qr, sample_bc) }}{% endif %}</div>
+      <p class="mini" id="size-hint" style="margin-top:10px">
+        {% if sample %}Printing {{ (tpl.width_mm or 50)|round(1) }}{% if tpl.shape == 'tail' %} + {{ (tpl.tail_mm or 16)|round(0) }} tail{% endif %} × {{ (tpl.height_mm or 25)|round(1) }} mm.{% endif %}
+      </p>
+      <p class="mini" style="margin-top:6px">
+        <a id="real-tag"
+           href="{{ url_for('print_product_tag', product_id=sample.id, tpl=tpl.id) if sample and tpl.id else '#' }}">Open this tag for real</a>
+        <span class="help">— the codes below are placeholders; that page renders the
+          real QR and barcode, which is the only way to test the camera scan.</span>
+      </p>
+
+      <div class="setup-note">
+        <div>Printing at true size — paper must be
+          <span class="paper" id="paper-hint">—</span></div>
+        <ol>
+          <li>Scale <b>100%</b>, never “Fit to page”.</li>
+          <li>Margins <b>None</b>.</li>
+          <li><b>Untick</b> “Headers and footers”, or the URL and date land on the label.</li>
+        </ol>
+        <div style="margin-top:6px">
+          <a href="{{ url_for('tag_calibration') }}" target="_blank" rel="noopener">
+            Print a ruler to check the scale</a>
+          <span class="help">— measure it before you spend label stock.</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-head"><h3>Saved designs</h3><span class="hint">{{ templates|length }}</span></div>
+      {% if templates %}
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Name</th><th>Shape</th><th>Scope</th><th>Size</th><th class="r">Action</th></tr></thead>
+          <tbody>
+          {% for t in templates %}
+          <tr>
+            <td><strong>{{ t.name }}</strong><div class="mini">{{ t.style|capitalize }} · {{ t.border }}</div></td>
+            <td>{% if t.shape == 'tail' %}<span class="badge badge-gold">Rectangle + tail</span>{% else %}<span class="badge badge-neutral">Rectangle</span>{% endif %}</td>
+            <td>{% if t.scope == 'category' %}<span class="badge badge-gold">{{ t.category }}</span>{% else %}<span class="badge badge-neutral">Default</span>{% endif %}</td>
+            <td class="mini">{{ (t.width_mm or 50)|round(0) }}{% if t.shape == 'tail' %} +{{ (t.tail_mm or 16)|round(0) }} tail{% endif %} × {{ (t.height_mm or 25)|round(0) }} mm</td>
+            <td><div class="row-actions"><a href="{{ url_for('tag_designer', tpl=t.id) }}" class="btn btn-ghost btn-sm">Edit</a></div></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+        </table>
+      </div>
+      {% else %}
+      <div class="empty"><span class="big">🏷️</span>No designs saved yet.</div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-head">
+    <h3>Print tags</h3>
+    <span class="hint">pick a category, tick items, or print everything</span>
+  </div>
+  <form method="GET" action="{{ url_for('print_tags') }}" id="print-form">
+    <input type="hidden" name="ids" id="ids" value="">
+    <div class="bar">
+      <select id="pcat" name="cat" style="flex:0 0 auto;min-width:180px" onchange="filterList()">
+        <option value="">All categories</option>
+        {% for c in categories %}<option value="{{ c }}">{{ c }}</option>{% endfor %}
+      </select>
+      <select name="tpl" style="flex:0 0 auto;min-width:200px">
+        <option value="">Each item's own design (category first)</option>
+        {% for t in templates %}
+        <option value="{{ t.id }}" {% if tpl.id == t.id %}selected{% endif %}>{{ t.name }}{% if t.scope == 'category' %} · {{ t.category }}{% endif %}{% if t.shape == 'tail' %} (rectangle + tail){% endif %}</option>
+        {% endfor %}
+      </select>
+      <select name="layout" style="flex:0 0 auto;min-width:150px">
+        <option value="roll">Thermal roll</option>
+        <option value="sheet">A4 sheet</option>
+      </select>
+      <input type="number" name="copies" min="1" max="10" value="1" style="flex:0 0 auto;width:90px" title="Copies">
+      <button type="submit" class="btn btn-gold">🖨️ Print selected</button>
+      <button type="button" class="btn btn-ghost" onclick="toggleAll(true)">Select all</button>
+      <button type="button" class="btn btn-ghost" onclick="toggleAll(false)">Clear</button>
+      <a class="btn btn-primary" href="{{ url_for('print_tags', layout='roll') }}">Print everything</a>
+    </div>
+    <div class="pick-list">
+      {% for p in products %}
+      <label data-cat="{{ p.category or '' }}">
+        <input type="checkbox" class="pcheck" value="{{ p.id }}">
+        <span>{{ p.name }}</span>
+        <span class="mini">· {{ p.item_type|capitalize }}{% if p.category %} · {{ p.category }}{% endif %}
+          {% if (p.unit or 'pcs') == 'g' %} · {{ p.stock_weight or 0 }} g{% else %} · {{ p.stock_quantity }} pcs{% endif %}</span>
+      </label>
+      {% else %}
+      <div class="empty"><span class="big">📦</span>No products in stock yet.</div>
+      {% endfor %}
+    </div>
+  </form>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+/* ============================================================
+   Live preview. Mirrors templates/tag_design.html so what the
+   user sees in the right pane is exactly what the printer will
+   render — no Save needed, no server round-trip.
+   ============================================================ */
+var SAMPLE = {
+  /* tojson, not bare interpolation: a NULL weight would print the word
+     "None" and kill the whole script with a syntax error, taking the live
+     preview down with it. */
+  name: {{ ((sample.name or '') if sample else '')|tojson }},
+  category: {{ ((sample.category or '') if sample else '')|tojson }},
+  item_type: {{ ((sample.item_type or 'gold') if sample else 'gold')|tojson }},
+  unit: {{ ((sample.unit or 'pcs') if sample else 'pcs')|tojson }},
+  weight: {{ ((sample.weight_per_unit or 0) if sample else 0)|tojson }},
+  price: {{ ((sample.unit_price or 0) if sample else 0)|tojson }},
+  barcode: {{ ((sample.barcode or '') if sample else '')|tojson }},
+  sku: {{ ((sample.sku or '') if sample else '')|tojson }},
+  firm: {{ ((settings.firm_name or '') if settings else '')|tojson }}
+};
+/* the firm name is a shop-wide setting, not a per-product field — keep it out
+   of the per-sample switch so changing sample can't drop it. */
+var FIRM = SAMPLE.firm;
+var TPL_ID = {{ tpl.id or 'null' }};
+var SAMPLE_ID = {{ sample.id if sample else 'null' }};
+var FIELDS = ['show_name','show_category','show_metal','show_weight',
+              'show_price','show_code','show_sku','show_barcode',
+              'show_qr','show_firm'];
+var MM_PER_PT = 0.3528;
+
+function $(id){return document.getElementById(id);}
+function val(id){var e=$(id);return e ? (e.type==='checkbox' ? e.checked : e.value) : '';}
+function num(id, d){var v=parseFloat(val(id));return isNaN(v)?d:v;}
+/* Same 2dp rounding the macro applies — h*0.55 is 12.100000000000001 in
+   binary floating point, and preview must match print to the digit. */
+function r2(x){return Math.round(x * 100) / 100;}
+function r1(x){return Math.round(x * 10) / 10;}
+function fieldEl(name){return document.querySelector('input[name="'+name+'"]');}
+function show(id, on){var e=$(id); if(e) e.style.display = on ? '' : 'none';}
+/* Mirrors the server's |inr0 filter exactly: whole rupees, no thousands
+   separator, round-half-to-even. Any difference and the preview lies about
+   what the printer will put on the tag. */
+function inr0(paise){
+  var v = (paise || 0) / 100;
+  var whole = Math.floor(v), frac = v - whole;
+  if (frac > 0.5) whole += 1;
+  else if (frac === 0.5 && whole % 2 !== 0) whole += 1;
+  return String(whole);
+}
+function fmtMoney(paise){return '₹' + inr0(paise);}
+
+function toggleScope(){
+  var isCat = $('scope').value === 'category';
+  $('cat-field').style.display = isCat ? '' : 'none';
+}
+
+function setSize(w, h){
+  $('width_mm').value = w;
+  $('height_mm').value = h;
+  // A preset means "exactly this size", so release any pinned tag length —
+  // otherwise a 50 x 25 preset on a design pinned to 70 mm would quietly
+  // print 70 x 25 and the button would be lying.
+  var totalEl = $('total_mm');
+  if (totalEl) totalEl.value = 0;
+  renderPreview();
+}
+
+/* Keep the tag length and the tail in step. Whichever one the shopkeeper
+   last touched is the one that leads:
+     - type a tag length  -> the tail is whatever is left after the body
+     - type a tail        -> the tag length is released (0 = not fixed)
+   Mirrors resolved_tag_geometry() on the server. */
+var MIN_TAIL = 4;
+
+function syncLengths(source){
+  var totalEl = $('total_mm'), tailEl = $('tail_mm');
+  if (totalEl && tailEl) {
+    var want = num('total_mm', 0);
+    if (source === 'tail_mm') {
+      totalEl.value = 0;                 // the tail now leads
+    } else if (want > 0) {
+      tailEl.value = r1(Math.max(MIN_TAIL, want - num('width_mm', 50)));
+    }
+  }
+  renderPreview();
+}
+
+function setShape(shape){
+  shape = (shape === 'tail') ? 'tail' : 'rectangle';
+  $('shape').value = shape;
+  document.querySelectorAll('.shape-pick').forEach(function(el){
+    el.classList.toggle('on', el.dataset.shape === shape);
+  });
+  // tail geometry only means anything on a tail tag
+  document.querySelectorAll('.tail-only').forEach(function(el){
+    el.classList.toggle('show', shape === 'tail');
+  });
+  renderPreview();
+}
+
+/* One-click fixes for a design that has been ticked down to nothing — which
+   is exactly how a shop ends up printing blank tags and reporting that the
+   metal and weight "don't show". */
+function setAllFields(on){
+  FIELDS.forEach(function(f){var e = fieldEl(f); if (e) e.checked = on;});
+  renderPreview();
+}
+function setEssentialFields(){
+  var on = ['show_name','show_category','show_metal','show_weight',
+            'show_price','show_code'];
+  FIELDS.forEach(function(f){
+    var e = fieldEl(f); if (e) e.checked = on.indexOf(f) >= 0;
+  });
+  renderPreview();
+}
+
+function setSample(el){
+  document.querySelectorAll('.sample-pick').forEach(function(s){
+    s.classList.toggle('on', s===el);
+  });
+  SAMPLE = {
+    name: el.dataset.name,
+    category: el.dataset.category,
+    item_type: el.dataset.itemType || el.dataset.item_type,
+    unit: el.dataset.unit,
+    weight: parseFloat(el.dataset.weight) || 0,
+    price: parseFloat(el.dataset.price) || 0,
+    barcode: el.dataset.barcode,
+    sku: el.dataset.sku,
+    firm: FIRM          // shop-wide, so it survives every sample switch
+  };
+  SAMPLE_ID = parseInt(el.dataset.id, 10) || null;
+  $('preview-hint').textContent = SAMPLE.name || '—';
+  syncRealTagLink();
+  renderPreview();
+}
+
+/* Points at the page that renders the *real* QR / barcode for this item. */
+function syncRealTagLink(){
+  var a = $('real-tag');
+  if (!a) return;
+  a.href = (SAMPLE_ID && TPL_ID)
+    ? '/products/' + SAMPLE_ID + '/tag?tpl=' + TPL_ID
+    : '#';
+}
+
+function toggleAll(on){
+  document.querySelectorAll('.pcheck').forEach(function(c){
+    if (c.closest('label').style.display !== 'none') c.checked = on;
+  });
+}
+function filterList(){
+  var cat = $('pcat').value;
+  document.querySelectorAll('.pick-list label[data-cat]').forEach(function(l){
+    l.style.display = (!cat || l.dataset.cat === cat) ? '' : 'none';
+  });
+}
+$('print-form').addEventListener('submit', function(e){
+  var ids = [];
+  document.querySelectorAll('.pcheck').forEach(function(c){ if (c.checked) ids.push(c.value); });
+  $('ids').value = ids.join(',');
+  if (!ids.length && !$('pcat').value) {
+    if (!confirm('Nothing ticked — print every product?')) e.preventDefault();
+  }
+});
+
+/* ------- resolved geometry -------------------------------------
+   Single source of truth for the preview: every "0 = auto" rule from
+   tag_design.html is applied here once, so the preview and the printed tag
+   can never disagree about a size. */
+function resolved(){
+  var shape = ($('shape').value === 'tail') ? 'tail' : 'rectangle';
+  var h = num('height_mm', 25);
+  var w = num('width_mm', 50);
+  var tailH = num('tail_h_mm', 0);
+  var qrIn = num('qr_mm', 0);
+  var bcIn = num('bc_h_mm', 0);
+  // A pinned tag length is authoritative: the tail is whatever is left over
+  // after the body, exactly as resolved_tag_geometry() decides on the server.
+  var tail = 0;
+  if (shape === 'tail') {
+    var pinned = num('total_mm', 0);
+    tail = pinned > 0
+      ? Math.max(MIN_TAIL, pinned - w)
+      : Math.max(MIN_TAIL, num('tail_mm', 16));
+  }
+  return {
+    shape: shape,
+    w: w,
+    h: h,
+    tail: r2(tail),
+    total: r2(w + tail),
+    tailh: r2(tailH > 0 ? tailH : h * 0.40),
+    hole: shape === 'tail' ? num('tail_hole_mm', 0) : 0,
+    tailpos: $('tail_pos') ? $('tail_pos').value : 'middle',
+    qr: r2(qrIn > 0 ? qrIn : h * 0.55),
+    bch: r2(bcIn > 0 ? bcIn : h * 0.28),
+    bcw: num('bc_w_pct', 100),
+    pad: num('pad_mm', 1.4),
+    padh: num('pad_h_mm', 2),
+    gap: num('gap_mm', 0.5),
+    jn: num('font_name', 10),
+    jd: num('font_detail', 8)
+  };
+}
+
+/* ------- the renderer ------------------------------------------- */
+function renderPreview(){
+  var stage = $('tag-stage');
+  if (!stage) return;
+
+  var r = resolved();
+  var style = val('style') || 'classic';
+  var border = val('border') || 'solid';
+  var align = r.tailpos === 'top' ? 'flex-start'
+            : (r.tailpos === 'bottom' ? 'flex-end' : 'center');
+
+  // build the container — mirror the macro exactly
+  var tag = document.createElement('div');
+  tag.className = 'jt jt-shape-' + r.shape + ' jt-' + style + ' jt-b-' + border;
+  tag.style.setProperty('--jn', r.jn + 'pt');
+  tag.style.setProperty('--jd', r.jd + 'pt');
+  tag.style.setProperty('--tw', r.w + 'mm');
+  tag.style.setProperty('--th', r.h + 'mm');
+  tag.style.setProperty('--pad', r.pad + 'mm');
+  tag.style.setProperty('--padh', r.padh + 'mm');
+  tag.style.setProperty('--gaph', r.gap + 'mm');
+  tag.style.setProperty('--qr', r.qr + 'mm');
+  tag.style.setProperty('--bch', r.bch + 'mm');
+  tag.style.setProperty('--bcw', r.bcw + '%');
+  tag.style.setProperty('--tail', r.tail + 'mm');
+  tag.style.setProperty('--tailh', r.tailh + 'mm');
+  tag.style.setProperty('--tailpos', align);
+  tag.style.setProperty('--hole', r.hole + 'mm');
+
+  // firm
+  if (val('show_firm') && SAMPLE.firm) {
+    var firm = document.createElement('div');
+    firm.className = 'jt-firm';
+    firm.textContent = SAMPLE.firm;
+    tag.appendChild(firm);
+  }
+
+  var body = document.createElement('div');
+  body.className = 'jt-body';
+
+  if (r.shape === 'tail') {
+    // body card + tail strip, exactly as tag_design.html lays it out
+    var card = document.createElement('div');
+    card.className = 'jt-card';
+    card.appendChild(buildLeft());
+    if (val('show_qr')) card.appendChild(buildQR());
+    body.appendChild(card);
+
+    var tailEl = document.createElement('div');
+    tailEl.className = 'jt-tail';
+    if (r.hole > 0) {
+      var holeEl = document.createElement('span');
+      holeEl.className = 'jt-hole';
+      holeEl.setAttribute('aria-hidden', 'true');
+      tailEl.appendChild(holeEl);
+    }
+    body.appendChild(tailEl);
+  } else {
+    body.appendChild(buildLeft());
+    if (val('show_qr')) body.appendChild(buildQR());
+  }
+  tag.appendChild(body);
+
+  stage.innerHTML = '';
+  stage.appendChild(tag);
+
+  updateHints();
+}
+
+/* ------- hints, auto-size labels and warnings -------------------- */
+function updateHints(){
+  var r = resolved();
+  var hintEl = $('size-hint');
+  if (hintEl) {
+    hintEl.textContent = 'Printing ' + r.total.toFixed(1) +
+      (r.shape === 'tail' ? ' (body ' + r.w.toFixed(1) + ' + tail ' + r.tail.toFixed(1) + ')' : '') +
+      ' × ' + r.h.toFixed(1) + ' mm on ' +
+      (val('is_thermal') ? 'thermal roll (one label per page).' : 'an A4 sheet.');
+  }
+  var totalHint = $('total-w-hint');
+  if (totalHint) totalHint.textContent = 'total length: ' + r.total.toFixed(1) + ' mm';
+
+  // the length readout, so body + tail + length can never contradict
+  var readout = $('size-readout');
+  if (readout) {
+    if (r.shape === 'tail') {
+      var pinned = num('total_mm', 0);
+      readout.innerHTML = 'Body ' + r.w.toFixed(1) + ' + tail ' + r.tail.toFixed(1) +
+        ' = <b>' + r.total.toFixed(1) + ' mm</b>' +
+        (pinned > 0 ? ' — tag length fixed at ' + pinned.toFixed(1) + ' mm'
+                    : ' — no fixed length, body + tail decide');
+    } else {
+      readout.textContent = '';
+    }
+  }
+  var paper = $('paper-hint');
+  if (paper) paper.textContent = r.total.toFixed(1) + ' × ' + r.h.toFixed(1) + ' mm';
+
+  var qa = $('qr-auto');
+  if (qa) qa.textContent = '0 = auto (' + r.qr.toFixed(1) + ' mm)';
+  var ba = $('bc-auto');
+  if (ba) ba.textContent = '0 = auto (' + r.bch.toFixed(1) + ' mm)';
+  var ta = $('tailh-auto');
+  if (ta) ta.textContent = '0 = auto (' + r.tailh.toFixed(1) + ' mm)';
+
+  var anyOn = FIELDS.some(function(f){ return val(f); });
+  show('empty-warn', !anyOn);
+  show('nofit-warn', anyOn && contentHeightMm(r) > availableMm(r));
+}
+
+/* Rough stack height of everything that will print, in mm. Used only to warn
+   — the tag clips with overflow:hidden, so a design that overflows silently
+   loses its bottom lines, which is a confusing way to discover "the weight
+   isn't showing". */
+function contentHeightMm(r){
+  var line = r.jd * MM_PER_PT * 1.2;
+  var n = 0, h = 0;
+  function add(x){ h += x; n++; }
+  if (val('show_firm') && SAMPLE.firm) add(r.jd * MM_PER_PT * 1.2);
+  if (val('show_name')) add(r.jn * MM_PER_PT * 1.05);
+  var detail = (val('show_category') && SAMPLE.category)
+            || val('show_metal')
+            || (val('show_weight') && SAMPLE.unit !== 'g' && SAMPLE.weight);
+  if (detail) add(line);
+  if (val('show_price')) add(line);
+  if (val('show_code') && SAMPLE.barcode) add(line);
+  if (val('show_sku') && SAMPLE.sku) add(line);
+  if (val('note')) add(line);
+  if (val('show_barcode') && SAMPLE.barcode) add(r.bch);
+  if (n > 1) h += r.gap * (n - 1);
+  return h;
+}
+function availableMm(r){
+  return r.h - (2 * r.pad) - 0.7;   // minus the top/bottom border
+}
+
+function buildLeft(){
+  var left = document.createElement('div');
+  left.className = 'jt-left';
+
+  if (val('show_name')) left.appendChild(elText('jt-name', SAMPLE.name || '—'));
+
+  var line = document.createElement('div');
+  line.className = 'jt-line';
+  var parts = [];
+  if (val('show_category') && SAMPLE.category) parts.push(SAMPLE.category);
+  if (val('show_metal')) parts.push((SAMPLE.item_type||'gold').replace(/^./,function(c){return c.toUpperCase();}));
+  if (val('show_weight') && SAMPLE.unit !== 'g' && SAMPLE.weight) parts.push(SAMPLE.weight + ' g');
+  line.innerHTML = parts.map(function(p){return '<span>'+esc(p)+'</span>';}).join('');
+  if (parts.length) left.appendChild(line);
+
+  if (val('show_price')) {
+    var p = document.createElement('div');
+    p.className = 'jt-price';
+    p.innerHTML = esc(fmtMoney(SAMPLE.price)) +
+      (SAMPLE.unit === 'g' ? ' <span class="jt-per">/g</span>' : '');
+    left.appendChild(p);
+  }
+  if (val('show_code') && SAMPLE.barcode) left.appendChild(elText('jt-code', SAMPLE.barcode));
+  if (val('show_sku') && SAMPLE.sku) left.appendChild(elText('jt-sku', SAMPLE.sku));
+  if (val('note')) left.appendChild(elText('jt-note', val('note')));
+
+  if (val('show_barcode') && SAMPLE.barcode) {
+    var bc = document.createElement('div');
+    bc.className = 'jt-bc-mock';
+    bc.title = 'Barcode placeholder — printed version is real';
+    left.appendChild(bc);
+  }
+  return left;
+}
+
+function buildQR(){
+  var q = document.createElement('div');
+  q.className = 'jt-qr';
+  var inner = document.createElement('span');
+  inner.className = 'jt-qr-mock';
+  inner.title = 'QR placeholder — printed version is real';
+  q.appendChild(inner);
+  return q;
+}
+
+function elText(cls, text){
+  var d = document.createElement('div');
+  d.className = cls;
+  d.textContent = text;
+  return d;
+}
+function esc(s){return String(s).replace(/[&<>]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;'}[c];});}
+
+/* Wire up: every changeable input drives a re-render. */
+['height_mm','tail_h_mm','tail_hole_mm','tail_pos',
+ 'pad_mm','pad_h_mm','gap_mm','qr_mm','bc_h_mm','bc_w_pct',
+ 'font_name','font_detail','style','border','note','is_thermal'].forEach(function(id){
+  var e=$(id); if(!e) return;
+  e.addEventListener('input', renderPreview);
+  e.addEventListener('change', renderPreview);
+});
+/* these three are linked — editing one moves the others */
+['width_mm','total_mm','tail_mm'].forEach(function(id){
+  var e=$(id); if(!e) return;
+  e.addEventListener('input', function(){ syncLengths(id); });
+  e.addEventListener('change', function(){ syncLengths(id); });
+});
+document.querySelectorAll(
+  'input[type=checkbox][name^=show_]'
+).forEach(function(e){e.addEventListener('change', renderPreview);});
+document.querySelectorAll('.shape-pick').forEach(function(el){
+  el.addEventListener('click', function(){setShape(el.dataset.shape);});
+});
+
+toggleScope();
+/* The server already rendered this sample's tag *with the real QR / barcode
+   images*. The client-side rebuild can only draw placeholders, so leave the
+   real one on screen until the shopkeeper actually changes something. */
+document.querySelectorAll('.tail-only').forEach(function(el){
+  el.classList.toggle('show', ($('shape').value || 'rectangle') === 'tail');
+});
+syncRealTagLink();
+updateHints();
+</script>
+{% endblock %}

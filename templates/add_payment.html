@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block title %}Add payment{% endblock %}
+
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Add payment</h1>
+    <div class="sub">{{ invoice.invoice_number }} · total ₹{{ (invoice.total)|inr }}</div>
+  </div>
+  <div class="page-actions">
+    <a href="{{ url_for('view_invoice', invoice_id=invoice.id) }}" class="btn btn-ghost">Back</a>
+  </div>
+</div>
+
+<div class="card" style="max-width:520px">
+  {% if invoice.status == 'cancelled' %}
+  <div class="toast danger" style="position:static;margin-bottom:14px">
+    <span>This bill is cancelled — payments are not accepted.</span>
+  </div>
+  {% endif %}
+  <form method="POST">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="field-grid">
+      <div class="field">
+        <label for="amount">Amount (₹) *</label>
+        <input type="number" id="amount" name="amount" step="0.01" min="0" required autofocus>
+        <div class="help">Cannot exceed the balance due.</div>
+      </div>
+      <div class="field">
+        <label for="payment_method">Method</label>
+        <select id="payment_method" name="payment_method">
+          <option value="cash">Cash</option>
+          <option value="UPI">UPI</option>
+          <option value="bank_transfer">Bank Transfer</option>
+          <option value="card">Card</option>
+        </select>
+      </div>
+    </div>
+    <div class="field">
+      <label for="notes">Notes</label>
+      <textarea id="notes" name="notes" rows="2" placeholder="optional"></textarea>
+    </div>
+    <div class="form-actions">
+      <button type="submit" class="btn btn-success" {% if invoice.status == 'cancelled' %}disabled{% endif %}>Add payment</button>
+      <a href="{{ url_for('view_invoice', invoice_id=invoice.id) }}" class="btn btn-ghost">Cancel</a>
+    </div>
+  </form>
+</div>
+{% endblock %}

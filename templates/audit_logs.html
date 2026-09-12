@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% block title %}Audit log{% endblock %}
+
+{% block content %}
+<div class="page-head">
+  <div><h1>Audit log</h1><div class="sub">Every bill, payment, edit, login and export</div></div>
+  <div class="page-actions"><a href="{{ url_for('users') }}" class="btn btn-ghost">Back to team</a></div>
+</div>
+
+<div class="card">
+  <form method="GET" class="toolbar">
+    <input type="text" name="q" value="{{ q or '' }}" placeholder="Search action, entity or details...">
+    <button type="submit" class="btn btn-primary">Search</button>
+    {% if q %}<a href="{{ url_for('audit_logs') }}" class="btn btn-ghost">Clear</a>{% endif %}
+  </form>
+
+  {% if logs %}
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>When</th><th>User</th><th>Action</th><th>Entity</th><th>Details</th><th>IP</th></tr>
+      </thead>
+      <tbody>
+        {% for entry in logs %}
+        <tr>
+          <td class="mini">{{ entry.timestamp.strftime('%d %b %Y %H:%M') }}</td>
+          <td>{{ entry.user.username if entry.user else 'System' }}</td>
+          <td>
+            <span class="badge badge-{% if entry.action == 'create' %}paid{% elif entry.action == 'update' %}pending{% elif entry.action in ('delete','cancel') %}cancelled{% else %}neutral{% endif %}">
+              {{ entry.action|capitalize }}
+            </span>
+          </td>
+          <td class="mini">{{ entry.entity_type or '–' }}{% if entry.entity_id %} #{{ entry.entity_id }}{% endif %}</td>
+          <td>{{ entry.changes or '–' }}</td>
+          <td class="mini">{{ entry.ip_address or '–' }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% if pagination and pagination.pages > 1 %}
+  <div class="pager">
+    {% if pagination.page > 1 %}<a href="{{ url_for('audit_logs', q=q, page=pagination.page-1) }}">← Prev</a>{% endif %}
+    <span>Page {{ pagination.page }} of {{ pagination.pages }}</span>
+    {% if pagination.page < pagination.pages %}<a href="{{ url_for('audit_logs', q=q, page=pagination.page+1) }}">Next →</a>{% endif %}
+  </div>
+  {% endif %}
+  {% else %}
+  <div class="empty"><span class="big">🗂️</span>No audit entries found.</div>
+  {% endif %}
+</div>
+{% endblock %}

@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+{% block title %}Clients{% endblock %}
+
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Clients</h1>
+    <div class="sub">{{ pagination.total if pagination else 0 }} on the books</div>
+  </div>
+  <div class="page-actions">
+    <a href="{{ url_for('add_client') }}" class="btn btn-gold">+ Add Client</a>
+  </div>
+</div>
+
+<div class="card">
+  <form method="GET" class="toolbar">
+    <input type="text" name="q" value="{{ q or '' }}" placeholder="Search name or phone...">
+    <select name="sort" onchange="this.form.submit()" style="flex:0 0 auto;min-width:200px">
+      <option value="name" {% if sort == 'name' %}selected{% endif %}>Sort: Name A–Z</option>
+      <option value="balance_desc" {% if sort == 'balance_desc' %}selected{% endif %}>Sort: Balance high → low</option>
+      <option value="balance_asc" {% if sort == 'balance_asc' %}selected{% endif %}>Sort: Balance low → high</option>
+      <option value="purchases_desc" {% if sort == 'purchases_desc' %}selected{% endif %}>Sort: Top buyers</option>
+      <option value="recent" {% if sort == 'recent' %}selected{% endif %}>Sort: Newest first</option>
+    </select>
+    <button type="submit" class="btn btn-primary">Search</button>
+    {% if q %}<a href="{{ url_for('clients') }}" class="btn btn-ghost">Clear</a>{% endif %}
+  </form>
+
+  {% if clients %}
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Name</th><th>Phone</th><th class="r">Purchases</th><th class="r">Balance</th>
+        <th class="r">Actions</th></tr></thead>
+      <tbody>
+        {% for client in clients %}
+        <tr>
+          <td>
+            <a href="{{ url_for('view_client', client_id=client.id) }}"><strong>{{ client.name }}</strong></a>
+            {% if client.email %}<div class="mini">{{ client.email }}</div>{% endif %}
+          </td>
+          <td class="mini">{{ client.phone }}</td>
+          <td class="r">₹{{ (client.total_purchases or 0)|inr }}</td>
+          <td class="r">
+            {% if (client.balance or 0) > 0 %}
+              <strong style="color:var(--amber)">₹{{ (client.balance)|inr }}</strong>
+            {% else %}
+              <span class="mini">settled</span>
+            {% endif %}
+          </td>
+          <td>
+            <div class="row-actions">
+              <a href="{{ url_for('view_client', client_id=client.id) }}" class="btn btn-ghost btn-sm">Open</a>
+              <a href="{{ url_for('create_invoice') }}?client_id={{ client.id }}" class="btn btn-success btn-sm">+ Bill</a>
+              {% if (client.balance or 0) > 0 %}
+              <a href="{{ url_for('pay_remaining', client_id=client.id) }}" class="btn btn-gold btn-sm">Collect</a>
+              {% endif %}
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  {% if pagination and pagination.pages > 1 %}
+  <div class="pager">
+    {% if pagination.page > 1 %}<a href="{{ url_for('clients', q=q, sort=sort, page=pagination.page-1) }}">← Prev</a>{% endif %}
+    <span>Page {{ pagination.page }} of {{ pagination.pages }}</span>
+    {% if pagination.page < pagination.pages %}<a href="{{ url_for('clients', q=q, sort=sort, page=pagination.page+1) }}">Next →</a>{% endif %}
+  </div>
+  {% endif %}
+  {% else %}
+  <div class="empty">
+    <span class="big">👥</span>
+    {% if q %}No match for "{{ q }}".{% else %}No clients yet — add your first one.{% endif %}
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

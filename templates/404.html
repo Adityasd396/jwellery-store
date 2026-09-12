@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block title %}Not found{% endblock %}
+
+{% block content %}
+<div class="card" style="max-width:520px;margin:40px auto;text-align:center">
+  <div style="font-size:44px;opacity:.35">404</div>
+  <h1 style="font-size:20px;margin:8px 0">Page not found</h1>
+  <p class="mini">The bill, client or product you asked for isn't here — it may have been deleted.</p>
+  <div class="form-actions" style="justify-content:center">
+    <a href="{{ url_for('index') }}" class="btn btn-gold">Go to dashboard</a>
+    <a href="{{ url_for('invoices') }}" class="btn btn-ghost">Browse bills</a>
+  </div>
+</div>
+{% endblock %}

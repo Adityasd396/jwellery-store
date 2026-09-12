@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% block title %}Team{% endblock %}
+
+{% block content %}
+<div class="page-head">
+  <div><h1>Team</h1><div class="sub">Everyone who can sign in to this shop</div></div>
+  <div class="page-actions">
+    <a href="{{ url_for('audit_logs') }}" class="btn btn-ghost">Audit log</a>
+    <a href="{{ url_for('register') }}" class="btn btn-gold">+ Add user</a>
+  </div>
+</div>
+
+<div class="card">
+  {% if users %}
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>User</th><th>Role</th><th>Created</th><th>Last login</th><th class="r">Actions</th></tr>
+      </thead>
+      <tbody>
+        {% for user in users %}
+        <tr>
+          <td>
+            <strong>{{ user.username }}</strong>
+            <div class="mini">{{ user.email }}</div>
+          </td>
+          <td>{% if user.is_admin %}<span class="badge badge-gold">Admin</span>{% else %}<span class="badge badge-neutral">User</span>{% endif %}</td>
+          <td class="mini">{{ user.created_at.strftime('%d %b %Y') }}</td>
+          <td class="mini">{{ user.last_login.strftime('%d %b %Y %H:%M') if user.last_login else 'Never' }}</td>
+          <td>
+            <div class="row-actions">
+              <form action="{{ url_for('reset_password', user_id=user.id) }}" method="POST" class="inline"
+                    data-confirm="Set a new password for {{ user.username }}?">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <input type="text" name="new_password" placeholder="New password (8+)" minlength="8" required
+                       style="width:160px;display:inline-block;padding:5px 8px;font-size:12.5px">
+                <button type="submit" class="btn btn-ghost btn-sm">Reset</button>
+              </form>
+              {% if not user.is_admin or user.id != session.get('user_id') %}
+              <form action="{{ url_for('delete_user', user_id=user.id) }}" method="POST" class="inline"
+                    data-confirm="Delete {{ user.username }}? Their audit entries are kept.">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="btn btn-danger btn-sm">Delete</button>
+              </form>
+              {% endif %}
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="empty"><span class="big">👤</span>No users found.</div>
+  {% endif %}
+</div>
+{% endblock %}

@@ -1,0 +1,151 @@
+{% extends "base.html" %}
+{% block title %}Dashboard{% endblock %}
+
+{% block head %}
+<style>
+.chart{display:flex;align-items:flex-end;gap:10px;height:150px;margin-top:14px}
+.chart .col{flex:1;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;gap:5px;height:100%}
+.chart .bar{width:100%;border-radius:6px 6px 0 0;background:linear-gradient(180deg,#d9b34a,#8a6212);
+  min-height:4px}
+.chart .amt{font-size:11.5px;font-weight:700;color:#57503f}
+.chart .lbl{font-size:11.5px;color:var(--muted)}
+.qa{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.qa a{display:flex;align-items:center;gap:9px;padding:12px 13px;border-radius:11px;font-size:13.5px;
+  font-weight:600;border:1px solid var(--line);background:#fff;color:var(--ink);text-decoration:none}
+.qa a:hover{background:#faf7f0;border-color:#dcd4c4;text-decoration:none}
+.qa .ic{width:26px;height:26px;border-radius:8px;display:grid;place-items:center;font-size:14px;flex-shrink:0}
+.ic-green{background:var(--green-soft);color:var(--green)}
+.ic-blue{background:var(--blue-soft);color:var(--blue)}
+.ic-gold{background:var(--gold-soft);color:#8a6212}
+.ic-amber{background:var(--amber-soft);color:var(--amber)}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Dashboard</h1>
+    <div class="sub">{{ now().strftime('%A, %d %b %Y') }}</div>
+  </div>
+  <div class="page-actions">
+    <a href="{{ url_for('create_invoice') }}" class="btn btn-gold">+ New Bill</a>
+    <a href="{{ url_for('reports') }}" class="btn btn-ghost">Reports</a>
+  </div>
+</div>
+
+<div class="stat-grid" style="margin-bottom:18px">
+  <div class="stat">
+    <div class="stat-label">Sales</div>
+    <div class="stat-value">₹{{ (total_revenue)|inr0 }}</div>
+    <div class="stat-hint">excludes cancelled bills</div>
+  </div>
+  <div class="stat warn">
+    <div class="stat-label">Pending dues</div>
+    <div class="stat-value">₹{{ (pending_value)|inr0 }}</div>
+    <div class="stat-hint">unpaid bills</div>
+  </div>
+  <div class="stat">
+    <div class="stat-label">Bills</div>
+    <div class="stat-value">{{ total_invoices }}</div>
+    <div class="stat-hint"><a href="{{ url_for('invoices') }}">view all</a></div>
+  </div>
+  <div class="stat">
+    <div class="stat-label">Clients</div>
+    <div class="stat-value">{{ total_clients }}</div>
+    <div class="stat-hint"><a href="{{ url_for('clients') }}">view all</a></div>
+  </div>
+  <div class="stat">
+    <div class="stat-label">Stock items</div>
+    <div class="stat-value">{{ total_products }}</div>
+    <div class="stat-hint"><a href="{{ url_for('products') }}">view stock</a></div>
+  </div>
+  <div class="stat {{ 'warn' if low_stock else 'good' }}">
+    <div class="stat-label">Low stock</div>
+    <div class="stat-value">{{ low_stock }}</div>
+    <div class="stat-hint">{{ 'items at 5 or fewer' if low_stock else 'all stocked up' }}</div>
+  </div>
+</div>
+
+<div class="grid-2">
+  <div>
+    <div class="card">
+      <div class="card-head">
+        <h3>Revenue — last 6 months</h3>
+        <span class="hint">₹</span>
+      </div>
+      <div class="chart">
+        {% for m in monthly %}
+        <div class="col" title="{{ m.label }}: ₹{{ (m.revenue/100)|round|int }}">
+          <div class="amt">{{ (m.revenue/100)|round|int }}</div>
+          <div class="bar" style="height: {{ ((m.revenue / peak) * 100)|round(0)|int }}px"></div>
+          <div class="lbl">{{ m.label }}</div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-head">
+        <h3>Recent bills</h3>
+        <a class="hint" href="{{ url_for('invoices') }}">All bills →</a>
+      </div>
+      {% if recent_invoices %}
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Bill</th><th>Client</th><th>Date</th><th class="r">Amount</th><th>Status</th></tr></thead>
+          <tbody>
+          {% for invoice in recent_invoices %}
+            <tr>
+              <td><a href="{{ url_for('view_invoice', invoice_id=invoice.id) }}"><strong>{{ invoice.invoice_number }}</strong></a></td>
+              <td>{{ invoice.client.name if invoice.client else '—' }}</td>
+              <td class="mini">{{ invoice.date_created.strftime('%d %b %Y') }}</td>
+              <td class="r">₹{{ (invoice.total)|inr }}</td>
+              <td><span class="badge badge-{{ invoice.status }}">{{ invoice.status }}</span></td>
+            </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <div class="empty"><span class="big">🧾</span>No bills yet — create your first one.</div>
+      {% endif %}
+    </div>
+  </div>
+
+  <div>
+    <div class="card">
+      <div class="card-head">
+        <h3>Today's rates</h3>
+        <span class="hint">₹/gram</span>
+      </div>
+      <form method="POST" action="{{ url_for('quick_prices') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="field-grid">
+          <div class="field">
+            <label for="dash-gold">Gold</label>
+            <input type="number" id="dash-gold" name="gold_price" step="0.01" min="0.01" required
+                   value="{{ (metal_prices.gold.price_per_gram)|inr }}">
+          </div>
+          <div class="field">
+            <label for="dash-silver">Silver</label>
+            <input type="number" id="dash-silver" name="silver_price" step="0.01" min="0.01" required
+                   value="{{ (metal_prices.silver.price_per_gram)|inr }}">
+          </div>
+        </div>
+        <button type="submit" class="btn btn-success btn-block">Update rates</button>
+        <p class="mini" style="margin-top:8px">Saving reprices every auto-priced product. Old bills never change.</p>
+      </form>
+    </div>
+
+    <div class="card">
+      <div class="card-head"><h3>Quick actions</h3></div>
+      <div class="qa">
+        <a href="{{ url_for('create_invoice') }}"><span class="ic ic-green">＋</span>New bill</a>
+        <a href="{{ url_for('add_client') }}"><span class="ic ic-blue">👤</span>Add client</a>
+        <a href="{{ url_for('add_product') }}"><span class="ic ic-gold">◈</span>Add product</a>
+        <a href="{{ url_for('clients') }}"><span class="ic ic-amber">₹</span>Collect dues</a>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

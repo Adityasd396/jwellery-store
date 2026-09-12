@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tag · {{ product.name }}</title>
+    {% from "tag_design.html" import tag_css %}
+    {{ tag_css(thermal=True,
+               first_w=geo.body,
+               first_h=geo.height,
+               first_tail=geo.tail) }}
+    <style>
+        .no-print { max-width: 700px; margin: 0 auto 14px auto; font-family: Arial, sans-serif;
+            background: #fff; border: 1px solid #ddd; border-radius: 10px; padding: 14px 16px; }
+        .no-print h3 { margin: 0 0 10px 0; font-size: 15px; }
+        .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; font-size: 13px; margin-bottom: 8px; }
+        .row label { font-weight: 600; }
+        .row input, .row select { padding: 6px 8px; border: 1px solid #ccc; border-radius: 5px; font-size: 13px; }
+        .row input { width: 74px; }
+        .print-btn { padding: 9px 20px; background: #27ae60; color: #fff; border: 0;
+            border-radius: 6px; cursor: pointer; font-size: 14px; font-weight: 600; }
+        .ghost { padding: 9px 16px; background: #fff; color: #333; border: 1px solid #ccc;
+            border-radius: 6px; cursor: pointer; font-size: 13.5px; text-decoration: none;
+            display: inline-flex; align-items: center; }
+        .hint { font-size: 12px; color: #777; }
+        .sheet { display: flex; justify-content: center; padding: 6px; }
+        /* the paper size is the one number that decides whether the label comes
+           out the right physical size, so make it the loudest thing here */
+        .setup { border: 1px solid #e2d9c3; background: #fffdf6; border-radius: 9px;
+            padding: 10px 13px; margin-bottom: 10px; font-size: 12.5px; color: #5c5344; }
+        .setup .paper { font-size: 15px; font-weight: 700; color: #8a5b00; }
+        .setup ol { margin: 7px 0 0 18px; padding: 0; }
+        .setup li { margin-bottom: 3px; }
+        .readout { font-size: 12.5px; color: #444; margin: 2px 0 0; }
+        .readout b { color: #8a5b00; }
+    </style>
+</head>
+<body>
+    {% from "tag_design.html" import tag_art %}
+    <div class="no-print">
+        <h3>Tag preview — {{ product.name }}</h3>
+
+        <div class="setup">
+            <div>Set the paper size to <span class="paper">{{ geo.total|round(1) }} × {{ geo.height|round(1) }} mm</span>
+                {% if geo.tail %}({{ geo.body|round(1) }} mm body + {{ geo.tail|round(1) }} mm tail){% endif %}</div>
+            <ol>
+                <li>Scale <b>100%</b> — not “Fit to page”.</li>
+                <li>Margins <b>None</b>.</li>
+                <li><b>Untick</b> “Headers and footers”, or the URL and date print on the label.</li>
+            </ol>
+            <div style="margin-top:7px">
+                <a href="{{ url_for('tag_calibration', w=geo.total) }}" class="ghost" style="padding:4px 10px;font-size:12.5px">
+                    Print a {{ geo.total|round(0)|int }} mm ruler to check
+                </a>
+                <span class="hint">Measure it. If it is not exactly
+                    {{ geo.total|round(0)|int }} mm, the printer is scaling the page.</span>
+            </div>
+        </div>
+
+        <form method="GET" class="row" id="size-form">
+            <label for="tpl">Design</label>
+            <select id="tpl" name="tpl" onchange="this.form.submit()">
+                {% for t in templates %}
+                <option value="{{ t.id }}" {% if t.id == tpl.id %}selected{% endif %}>
+                    {{ t.name }}{% if t.scope == 'category' %} · {{ t.category }}{% else %} · default{% endif %}
+                </option>
+                {% endfor %}
+            </select>
+            <label for="w">Body (mm)</label>
+            <input type="number" id="w" name="w" step="0.5" min="10" max="300" value="{{ geo.body|round(1) }}">
+            <label for="h">Height (mm)</label>
+            <input type="number" id="h" name="h" step="0.5" min="5" max="300" value="{{ geo.height|round(1) }}">
+            {% if geo.shape == 'tail' %}
+            <label for="total">Tag length (mm)</label>
+            <input type="number" id="total" name="total" step="1" min="0" max="400" value="{{ tpl.total_mm or 0 }}">
+            <label for="tail">Tail (mm)</label>
+            <input type="number" id="tail" name="tail" step="1" min="4" max="120" value="{{ geo.tail|round(1) }}">
+            {% endif %}
+            <button type="submit" class="ghost">Apply size</button>
+        </form>
+        {% if geo.shape == 'tail' %}
+        <p class="readout" id="readout">Body {{ geo.body|round(1) }} + tail {{ geo.tail|round(1) }}
+            = <b>{{ geo.total|round(1) }} mm</b>{% if tpl.total_mm %} — tag length fixed at {{ tpl.total_mm|round(1) }} mm{% endif %}</p>
+        {% endif %}
+
+        <div class="row">
+            <span class="hint">Presets:</span>
+            {% for label, pw, ph in presets %}
+            <a class="ghost" href="{{ url_for('print_product_tag', product_id=product.id, tpl=tpl.id, w=pw, h=ph, total=0) }}">{{ label }}</a>
+            {% endfor %}
+        </div>
+        <div class="row">
+            <button class="print-btn" onclick="window.print()">🖨️ Print tag</button>
+            <a class="ghost" href="{{ url_for('tag_designer') }}">Designer &amp; batch print</a>
+            <a class="ghost" href="{{ url_for('view_product', product_id=product.id) }}">Back</a>
+        </div>
+    </div>
+
+    <div class="sheet">
+        {{ tag_art(tpl, product, settings, qr_data, barcode_data,
+                   w=geo.body, h=geo.height, tail=geo.tail) }}
+    </div>
+
+    {% if geo.shape == 'tail' %}
+    <script>
+    /* Keep the three length fields consistent so "Apply size" can never send a
+       tag length that contradicts the tail. Editing the tail clears the fixed
+       tag length — otherwise the length would win and the edit would vanish. */
+    (function () {
+      var w = document.getElementById('w'),
+          total = document.getElementById('total'),
+          tail = document.getElementById('tail'),
+          readout = document.getElementById('readout');
+      if (!w || !total || !tail) return;
+
+      function f(el) { return parseFloat(el.value) || 0; }
+      function show() {
+        var body = f(w), t = f(tail), fixed = f(total);
+        readout.innerHTML = 'Body ' + body.toFixed(1) + ' + tail ' + t.toFixed(1) +
+          ' = <b>' + (body + t).toFixed(1) + ' mm</b>' +
+          (fixed > 0 ? ' — tag length fixed at ' + fixed.toFixed(1) + ' mm' : '');
+      }
+      function deriveFromLength() {
+        var fixed = f(total);
+        if (fixed > 0) tail.value = Math.max(4, fixed - f(w)).toFixed(1);
+      }
+      w.addEventListener('change', function () { deriveFromLength(); show(); });
+      total.addEventListener('change', function () { deriveFromLength(); show(); });
+      tail.addEventListener('change', function () { total.value = 0; show(); });
+    })();
+    </script>
+    {% endif %}
+</body>
+</html>

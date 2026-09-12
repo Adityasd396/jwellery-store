@@ -1,0 +1,106 @@
+{% extends "base.html" %}
+{% block title %}Add product{% endblock %}
+
+{% block content %}
+<div class="page-head">
+  <div><h1>Add product</h1><div class="sub">Price follows the metal rate unless you set a custom price</div></div>
+  <div class="page-actions"><a href="{{ url_for('products') }}" class="btn btn-ghost">Back</a></div>
+</div>
+
+<div class="card" style="max-width:720px">
+  <form method="POST">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="field">
+      <label for="name">Product name *</label>
+      <input type="text" id="name" name="name" placeholder="e.g. Gold Ring" required autofocus>
+    </div>
+
+    <div class="field-grid">
+      <div class="field">
+        <label for="item_type">Metal *</label>
+        <select id="item_type" name="item_type">
+          <option value="gold">Gold</option>
+          <option value="silver">Silver</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="category">Category</label>
+        <input type="text" id="category" name="category" list="cat-list" placeholder="e.g. Handring">
+        <datalist id="cat-list">
+          <option value="Ring"></option>
+          <option value="Handring"></option>
+          <option value="Chain"></option>
+          <option value="Bangle"></option>
+          <option value="Earring"></option>
+          <option value="Pendant"></option>
+          <option value="Coin"></option>
+          <option value="Pearls"></option>
+        </datalist>
+      </div>
+    </div>
+
+    <div class="field-grid">
+      <div class="field">
+        <label for="unit">Sold by *</label>
+        <select id="unit" name="unit" onchange="syncUnit(this.value)">
+          <option value="pcs">Pieces (fixed qty)</option>
+          <option value="g">Weight in grams (pearls etc.)</option>
+        </select>
+      </div>
+      <div class="field" id="wpu-field">
+        <label for="weight_per_unit">Weight per unit (g) *</label>
+        <input type="number" id="weight_per_unit" name="weight_per_unit" step="0.01" min="0" required>
+        <div class="help" id="wpu-help">Auto price = weight × metal rate.</div>
+      </div>
+    </div>
+    <script>
+    /* Sold by weight: the unit IS one gram, so "weight per unit" does not
+       apply — the item is priced straight off the per-gram metal rate. */
+    function syncUnit(v){
+      var isG = v === 'g';
+      document.getElementById('pcs-row').style.display = isG ? 'none' : 'block';
+      document.getElementById('g-row').style.display = isG ? 'block' : 'none';
+      document.getElementById('wpu-field').style.display = isG ? 'none' : 'block';
+      var wpu = document.getElementById('weight_per_unit');
+      wpu.required = !isG;
+      if (isG) wpu.value = '1';
+      document.getElementById('wpu-help').textContent = isG
+        ? 'Priced per gram — the weight is entered when billing.'
+        : 'Auto price = weight × metal rate.';
+    }
+    syncUnit(document.getElementById('unit').value);
+    </script>
+
+    <div class="field" id="pcs-row">
+      <label for="stock_quantity">Stock (pieces)</label>
+      <input type="number" id="stock_quantity" name="stock_quantity" min="0" value="0">
+    </div>
+    <div class="field" id="g-row" style="display:none">
+      <label for="stock_weight">Stock (grams)</label>
+      <input type="number" id="stock_weight" name="stock_weight" step="0.01" min="0" value="0">
+    </div>
+
+    <div class="field-grid">
+      <div class="field">
+        <label for="cost_price">Cost price (₹, for profit)</label>
+        <input type="number" id="cost_price" name="cost_price" step="0.01" min="0" value="0">
+      </div>
+      <div class="field">
+        <label for="custom_price">Custom sale price (₹)</label>
+        <input type="number" id="custom_price" name="custom_price" step="0.01" min="0" value="0">
+        <div class="help">Leave 0 to price from the live metal rate.</div>
+      </div>
+    </div>
+
+    <div class="field">
+      <label for="description">Description</label>
+      <textarea id="description" name="description" rows="2" placeholder="optional"></textarea>
+    </div>
+
+    <div class="form-actions">
+      <button type="submit" class="btn btn-success">Save product</button>
+      <a href="{{ url_for('products') }}" class="btn btn-ghost">Cancel</a>
+    </div>
+  </form>
+</div>
+{% endblock %}

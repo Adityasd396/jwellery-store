@@ -1,0 +1,13 @@
+__pycache__/
+*.py[cod]
+.git/
+.gitignore
+.venv/
+venv/
+.env
+instance/
+*.db
+backup_*.db
+pre-restore-*.db
+tests.py
+*.md

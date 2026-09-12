@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+{% block title %}Deleted bills{% endblock %}
+
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Deleted bills</h1>
+    <div class="sub">Every bill removed from the books, kept with who deleted it and why</div>
+  </div>
+  <div class="page-actions">
+    <a href="{{ url_for('deleted_bills_csv') }}" class="btn btn-ghost">⬇ CSV</a>
+    <a href="{{ url_for('settings') }}" class="btn btn-ghost">Back</a>
+  </div>
+</div>
+
+<div class="stat-grid" style="margin-bottom:18px">
+  <div class="stat">
+    <div class="stat-label">Bills deleted</div>
+    <div class="stat-value">{{ totals.count }}</div>
+  </div>
+  <div class="stat">
+    <div class="stat-label">Value removed</div>
+    <div class="stat-value">₹{{ (totals.value)|inr0 }}</div>
+  </div>
+  <div class="stat good">
+    <div class="stat-label">Was already paid</div>
+    <div class="stat-value">₹{{ (totals.paid)|inr0 }}</div>
+    <div class="stat-hint">payments reversed on delete</div>
+  </div>
+</div>
+
+<div class="card">
+  <form method="GET" class="toolbar">
+    <input type="text" name="q" value="{{ q or '' }}"
+           placeholder="Search bill no, client, GSTIN or user...">
+    <button type="submit" class="btn btn-primary">Search</button>
+    {% if q %}<a href="{{ url_for('deleted_bills') }}" class="btn btn-ghost">Clear</a>{% endif %}
+  </form>
+
+  {% if rows %}
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Bill</th><th>Client</th><th>Bill date</th><th>Deleted</th>
+          <th>By</th><th class="r">Total</th><th class="r">Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+      {% for d in rows %}
+        <tr>
+          <td><a href="{{ url_for('view_deleted_bill', row_id=d.id) }}"><strong>{{ d.invoice_number }}</strong></a>
+            {% if d.reason %}<div class="mini" title="{{ d.reason }}">“{{ d.reason[:40] }}{{ '…' if d.reason|length > 40 }}”</div>{% endif %}</td>
+          <td>{{ d.client_name or '—' }}<div class="mini">{{ d.client_phone }}</div></td>
+          <td class="mini">{{ d.date_created.strftime('%d %b %Y') if d.date_created else '—' }}</td>
+          <td class="mini">{{ d.deleted_at.strftime('%d %b %Y %H:%M') if d.deleted_at else '—' }}</td>
+          <td>{{ d.deleted_by or '—' }}</td>
+          <td class="r">₹{{ (d.total)|inr }}</td>
+          <td>
+            <div class="row-actions">
+              <a href="{{ url_for('view_deleted_bill', row_id=d.id) }}" class="btn btn-ghost btn-sm">Open</a>
+            </div>
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  {% if pagination and pagination.pages > 1 %}
+  <div class="pager">
+    {% if pagination.page > 1 %}<a href="{{ url_for('deleted_bills', q=q, page=pagination.page-1) }}">← Prev</a>{% endif %}
+    <span>Page {{ pagination.page }} of {{ pagination.pages }}</span>
+    {% if pagination.page < pagination.pages %}<a href="{{ url_for('deleted_bills', q=q, page=pagination.page+1) }}">Next →</a>{% endif %}
+  </div>
+  {% endif %}
+  {% else %}
+  <div class="empty"><span class="big">🗄️</span>Nothing has been deleted yet.</div>
+  {% endif %}
+</div>
+
+<p class="mini">
+  Deleting a bill restocks the items and reverses the customer's ledger — the invoice number is
+  never reused. This archive is the only remaining copy of what was on it, so it is never pruned.
+</p>
+{% endblock %}

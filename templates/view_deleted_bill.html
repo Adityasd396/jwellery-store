@@ -1,0 +1,89 @@
+{% extends "base.html" %}
+{% block title %}{{ row.invoice_number }} (deleted){% endblock %}
+
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>{{ row.invoice_number }} <span class="badge badge-cancelled badge-line">Deleted</span></h1>
+    <div class="sub">
+      Removed {{ row.deleted_at.strftime('%d %b %Y %H:%M') if row.deleted_at else '—' }}
+      by {{ row.deleted_by or '—' }} · originally billed
+      {{ row.date_created.strftime('%d %b %Y') if row.date_created else '—' }}
+    </div>
+  </div>
+  <div class="page-actions">
+    <a href="{{ url_for('deleted_bills') }}" class="btn btn-ghost">Back to archive</a>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-head"><h3>Why it was removed</h3></div>
+  <p>{% if row.reason %}{{ row.reason }}{% else %}<span class="mini">No reason was given.</span>{% endif %}</p>
+  <p class="mini" style="margin-top:8px">
+    From {{ row.ip_address or 'unknown IP' }} ·
+    {{ 'stock was returned to inventory' if row.stock_reversed else 'already cancelled, so nothing was restocked' }}
+  </p>
+</div>
+
+<div class="stat-grid" style="margin-bottom:18px">
+  <div class="stat"><div class="stat-label">Client</div>
+    <div class="stat-value" style="font-size:19px">{{ row.client_name or '—' }}</div>
+    <div class="stat-hint">{{ row.client_phone }}{% if row.client_gstin %} · GSTIN {{ row.client_gstin }}{% endif %}</div></div>
+  <div class="stat"><div class="stat-label">Subtotal</div><div class="stat-value">₹{{ (row.subtotal)|inr }}</div></div>
+  <div class="stat"><div class="stat-label">Discount</div><div class="stat-value">₹{{ (row.discount_amount)|inr }}</div></div>
+  <div class="stat"><div class="stat-label">GST ({{ row.gst_rate }}%)</div><div class="stat-value">₹{{ (row.gst_amount)|inr }}</div></div>
+  <div class="stat good"><div class="stat-label">Total</div><div class="stat-value">₹{{ (row.total)|inr }}</div>
+    <div class="stat-hint">₹{{ (row.paid_amount)|inr }} had been paid</div></div>
+</div>
+
+{% if data %}
+<div class="card">
+  <div class="card-head"><h3>What was on the bill</h3>
+    <span class="hint">{{ data['items']|length }} line(s) · rates gold ₹{{ data.gold_rate }}/g · silver ₹{{ data.silver_rate }}/g</span></div>
+  {% if data['items'] %}
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>#</th><th>Item</th><th>Type</th><th class="r">Qty</th>
+        <th class="r">Weight</th><th>Making</th><th class="r">Amount</th></tr></thead>
+      <tbody>
+      {% for it in data['items'] %}
+      <tr>
+        <td class="mini">{{ loop.index }}</td>
+        <td>{{ it.description }}</td>
+        <td><span class="badge badge-{{ 'gold' if it.item_type == 'gold' else 'neutral' }}">{{ it.item_type|capitalize }}</span></td>
+        <td class="r">{{ it.quantity }}</td>
+        <td class="r">{{ '%.3f'|format(it.weight or 0) }} g</td>
+        <td class="mini">{% if it.making_mode == 'flat' %}₹{{ it.making_charges }}/{{ 'g' if it.item_type == 'gold' else '10g' }}{% elif it.making_charges %}{{ it.making_charges }}%{% else %}—{% endif %}</td>
+        <td class="r">₹{{ it.line_total }}</td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="empty"><span class="big">📄</span>No line items were stored.</div>
+  {% endif %}
+</div>
+
+{% if data['payments'] %}
+<div class="card">
+  <div class="card-head"><h3>Payments that were attached</h3></div>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Date</th><th>Method</th><th class="r">Amount</th><th>Notes</th></tr></thead>
+      <tbody>
+      {% for p in data['payments'] %}
+      <tr><td class="mini">{{ p.date[:10] if p.date else '—' }}</td>
+        <td>{{ (p.method or 'cash')|capitalize }}</td>
+        <td class="r">₹{{ p.amount }}</td>
+        <td class="mini">{{ p.notes or '—' }}</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+{% else %}
+<div class="card"><div class="empty"><span class="big">📄</span>No snapshot stored for this bill.</div></div>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block title %}Edit client{% endblock %}
+
+{% block content %}
+<div class="page-head">
+  <div><h1>Edit client</h1><div class="sub">{{ client.name }}</div></div>
+  <div class="page-actions"><a href="{{ url_for('view_client', client_id=client.id) }}" class="btn btn-ghost">Back</a></div>
+</div>
+
+<div class="card" style="max-width:640px">
+  <form method="POST">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="field-grid">
+      <div class="field">
+        <label for="name">Name *</label>
+        <input type="text" id="name" name="name" value="{{ client.name }}" required>
+      </div>
+      <div class="field">
+        <label for="phone">Phone *</label>
+        <input type="text" id="phone" name="phone" value="{{ client.phone }}" required>
+      </div>
+    </div>
+    <div class="field">
+      <label for="gstin">GSTIN (optional)</label>
+      <input type="text" id="gstin" name="gstin" maxlength="20"
+             value="{{ client.gstin or '' }}" placeholder="e.g. 27ABCDE1234F1Z5">
+      <div class="help">Printed on their bills. Leave blank for a B2C customer.</div>
+    </div>
+    <div class="field">
+      <label for="email">Email</label>
+      <input type="email" id="email" name="email" value="{{ client.email or '' }}">
+    </div>
+    <div class="field">
+      <label for="address">Address</label>
+      <textarea id="address" name="address" rows="2">{{ client.address or '' }}</textarea>
+    </div>
+    <div class="field">
+      <label for="credit_limit">Credit limit (₹)</label>
+      <input type="number" id="credit_limit" name="credit_limit" step="0.01" min="0"
+             value="{{ ((client.credit_limit or 0)/100)|round(2) }}">
+      <div class="help">Stored in paise — enter rupees, e.g. 50000.</div>
+    </div>
+    <div class="form-actions">
+      <button type="submit" class="btn btn-success">Save changes</button>
+      <a href="{{ url_for('view_client', client_id=client.id) }}" class="btn btn-ghost">Cancel</a>
+    </div>
+  </form>
+</div>
+{% endblock %}

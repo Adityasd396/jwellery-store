@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+{% block title %}Bills{% endblock %}
+
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Bills</h1>
+    <div class="sub">{{ pagination.total if pagination else 0 }} in the books</div>
+  </div>
+  <div class="page-actions">
+    <a href="{{ url_for('create_invoice') }}" class="btn btn-gold">+ New Bill</a>
+    <a href="{{ url_for('export_invoices_csv') }}" class="btn btn-ghost">Export CSV</a>
+  </div>
+</div>
+
+<div class="card">
+  <form method="GET" class="toolbar">
+    <input type="text" name="q" value="{{ q or '' }}" placeholder="Search bill no. or client...">
+    <button type="submit" class="btn btn-primary">Search</button>
+    {% if q %}<a href="{{ url_for('invoices') }}" class="btn btn-ghost">Clear</a>{% endif %}
+  </form>
+
+  {% if invoices %}
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>Bill</th><th>Client</th><th>Date</th><th class="r">Amount</th><th class="r">Paid</th>
+            <th>Status</th><th class="r">Actions</th></tr>
+      </thead>
+      <tbody>
+        {% for invoice in invoices %}
+        <tr class="{{ 'is-void' if invoice.status == 'cancelled' }}">
+          <td>
+            <a href="{{ url_for('view_invoice', invoice_id=invoice.id) }}"><strong>{{ invoice.invoice_number }}</strong></a>
+          </td>
+          <td>{{ invoice.client.name if invoice.client else '—' }}</td>
+          <td class="mini">{{ invoice.date_created.strftime('%d %b %Y') }}</td>
+          <td class="r">₹{{ (invoice.total)|inr }}</td>
+          <td class="r mini">₹{{ (invoice.paid_amount or 0)|inr }}</td>
+          <td><span class="badge badge-{{ invoice.status }}">{{ invoice.status }}</span></td>
+          <td>
+            <div class="row-actions">
+              <a href="{{ url_for('view_invoice', invoice_id=invoice.id) }}" class="btn btn-ghost btn-sm">Open</a>
+              {% if invoice.status != 'cancelled' %}
+                {% if invoice.total - (invoice.paid_amount or 0) > 0 %}
+                <a href="{{ url_for('add_payment', invoice_id=invoice.id) }}" class="btn btn-success btn-sm">Pay</a>
+                {% endif %}
+                <form method="POST" class="inline" action="{{ url_for('update_invoice_status', invoice_id=invoice.id) }}"
+                      data-confirm="Cancel {{ invoice.invoice_number }}? Stock goes back and its payments are removed.">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                  <input type="hidden" name="status" value="cancelled">
+                  <button type="submit" class="btn btn-ghost btn-sm">Cancel</button>
+                </form>
+              {% endif %}
+              <form method="POST" class="inline" action="{{ url_for('delete_invoice', invoice_id=invoice.id) }}"
+                    data-confirm="Delete {{ invoice.invoice_number }} permanently? The number will not be reused.">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="btn btn-danger btn-sm">Delete</button>
+              </form>
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  {% if pagination and pagination.pages > 1 %}
+  <div class="pager">
+    {% if pagination.page > 1 %}<a href="{{ url_for('invoices', q=q, page=pagination.page-1) }}">← Prev</a>{% endif %}
+    <span>Page {{ pagination.page }} of {{ pagination.pages }}</span>
+    {% if pagination.page < pagination.pages %}<a href="{{ url_for('invoices', q=q, page=pagination.page+1) }}">Next →</a>{% endif %}
+  </div>
+  {% endif %}
+  {% else %}
+  <div class="empty">
+    <span class="big">🧾</span>
+    {% if q %}No match for "{{ q }}".{% else %}No bills yet. Create your first bill!{% endif %}
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

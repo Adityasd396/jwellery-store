@@ -1,0 +1,100 @@
+{% extends "base.html" %}
+{% block title %}Stock{% endblock %}
+
+{% macro stockrow(p) %}
+<tr>
+    <td>
+      <a href="{{ url_for('view_product', product_id=p.id) }}"><strong>{{ p.name }}</strong></a>
+      {% if p.category %}<div class="mini">{{ p.category }}</div>{% endif %}
+    </td>
+    <td><span class="badge badge-{{ 'gold' if p.item_type == 'gold' else 'neutral' }}">{{ p.item_type|capitalize }}</span></td>
+    <td>{% if (p.unit or 'pcs') == 'g' %}{{ p.stock_weight or 0 }} g{% else %}{{ p.stock_quantity }}{% endif %}</td>
+    <td class="r">₹{{ (p.unit_price)|inr }}{% if p.custom_price %}<div class="mini">custom</div>{% endif %}</td>
+    <td>
+        <div class="row-actions">
+            <a href="{{ url_for('view_product', product_id=p.id) }}" class="btn btn-ghost btn-sm">Open</a>
+            <a href="{{ url_for('print_product_tag', product_id=p.id) }}" class="btn btn-gold btn-sm">Tag</a>
+        </div>
+    </td>
+</tr>
+{% endmacro %}
+
+{% block content %}
+<div class="page-head">
+  <div><h1>Stock</h1><div class="sub">{{ all_stats.count }} items · {{ all_stats.pieces }} pcs in hand</div></div>
+  <div class="page-actions">
+    <a href="{{ url_for('tag_designer') }}" class="btn btn-ghost">🏷️ Tags</a>
+    <a href="{{ url_for('add_product') }}" class="btn btn-gold">+ Add Product</a>
+  </div>
+</div>
+
+<div class="stat-grid" style="margin-bottom:18px">
+    <div class="stat">
+        <div class="stat-label">Gold · {{ gold_stats.count }} items</div>
+        <div class="stat-value">{{ gold_stats.pieces }} pcs</div>
+        <div class="mini">{{ "%.1f"|format(gold_stats.weight) }} g in stock</div>
+    </div>
+    <div class="stat">
+        <div class="stat-label">Silver · {{ silver_stats.count }} items</div>
+        <div class="stat-value">{{ silver_stats.pieces }} pcs</div>
+        <div class="mini">{{ "%.1f"|format(silver_stats.weight) }} g in stock</div>
+    </div>
+    <div class="stat">
+        <div class="stat-label">Total · {{ all_stats.count }} items</div>
+        <div class="stat-value">{{ all_stats.pieces }} pcs</div>
+        <div class="mini">{{ "%.1f"|format(all_stats.weight) }} g in stock</div>
+    </div>
+</div>
+
+<div class="card">
+  <form method="GET" class="toolbar">
+    <input type="text" name="q" value="{{ q or '' }}" placeholder="Search name, SKU, code, category...">
+    <select name="cat" onchange="this.form.submit()" style="flex:0 0 auto;min-width:180px">
+        <option value="">All categories</option>
+        {% for c in categories %}
+        <option value="{{ c }}" {% if cat == c %}selected{% endif %}>{{ c }}</option>
+        {% endfor %}
+    </select>
+    <button type="submit" class="btn btn-primary">Search</button>
+    {% if q or cat %}<a href="{{ url_for('products') }}" class="btn btn-ghost">Clear</a>{% endif %}
+  </form>
+
+  <div class="card-head"><h3>🟡 Gold ({{ gold_products|length }})</h3></div>
+  {% if gold_products %}
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Item</th><th>Metal</th><th>Stock</th><th class="r">Price</th><th class="r">Actions</th></tr></thead>
+      <tbody>{% for p in gold_products %}{{ stockrow(p) }}{% endfor %}</tbody>
+    </table>
+  </div>
+  {% else %}<div class="empty"><span class="big">◈</span>No gold items.</div>{% endif %}
+
+  <div class="card-head" style="margin-top:22px"><h3>⚪ Silver ({{ silver_products|length }})</h3></div>
+  {% if silver_products %}
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Item</th><th>Metal</th><th>Stock</th><th class="r">Price</th><th class="r">Actions</th></tr></thead>
+      <tbody>{% for p in silver_products %}{{ stockrow(p) }}{% endfor %}</tbody>
+    </table>
+  </div>
+  {% else %}<div class="empty"><span class="big">◈</span>No silver items.</div>{% endif %}
+
+  <div class="card-head" style="margin-top:22px"><h3>🔴 Out of Stock ({{ out_products|length }})</h3></div>
+  {% if out_products %}
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Item</th><th>Metal</th><th>Stock</th><th class="r">Price</th><th class="r">Actions</th></tr></thead>
+      <tbody>{% for p in out_products %}{{ stockrow(p) }}{% endfor %}</tbody>
+    </table>
+  </div>
+  {% else %}<div class="empty"><span class="big">✓</span>Nothing out of stock.</div>{% endif %}
+
+  {% if pagination and pagination.pages > 1 %}
+  <div class="pager">
+    {% if pagination.page > 1 %}<a href="{{ url_for('products', q=q, cat=cat, page=pagination.page-1) }}">← Prev</a>{% endif %}
+    <span>Page {{ pagination.page }} of {{ pagination.pages }}</span>
+    {% if pagination.page < pagination.pages %}<a href="{{ url_for('products', q=q, cat=cat, page=pagination.page+1) }}">Next →</a>{% endif %}
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

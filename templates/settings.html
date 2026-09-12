@@ -1,0 +1,182 @@
+{% extends "base.html" %}
+{% block title %}Settings{% endblock %}
+
+{% block content %}
+<div class="page-head">
+  <div><h1>Settings</h1><div class="sub">Firm details, rates and tax — saving rates reprices every auto-priced item</div></div>
+  <div class="page-actions"><a href="{{ url_for('index') }}" class="btn btn-ghost">Back</a></div>
+</div>
+
+<div class="grid-2">
+  <div>
+    <div class="card">
+      <form method="POST">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+        <div class="card-head"><h3>Firm details</h3><span class="hint">printed on every bill</span></div>
+        <div class="field">
+          <label for="firm_name">Firm name</label>
+          <input type="text" id="firm_name" name="firm_name" value="{{ settings.firm_name if settings else '' }}">
+        </div>
+        <div class="field-grid">
+          <div class="field">
+            <label for="firm_phone">Phone</label>
+            <input type="text" id="firm_phone" name="firm_phone" value="{{ settings.firm_phone if settings else '' }}">
+          </div>
+          <div class="field">
+            <label for="firm_gst">Firm GSTIN</label>
+            <input type="text" id="firm_gst" name="firm_gst" value="{{ settings.firm_gst if settings else '' }}"
+                   placeholder="e.g. 27ABCDE1234F1Z5" maxlength="20">
+          </div>
+        </div>
+        <div class="field">
+          <label for="firm_address">Shop address</label>
+          <textarea id="firm_address" name="firm_address" rows="2">{{ settings.firm_address if settings else '' }}</textarea>
+        </div>
+        <div class="field">
+          <label for="firm_email">Email</label>
+          <input type="text" id="firm_email" name="firm_email" value="{{ settings.firm_email if settings else '' }}">
+        </div>
+
+        <div class="card-head" style="margin-top:8px">
+          <h3>Making charges</h3>
+          <span class="hint">charged as a % of metal value, or a flat rate per gram</span>
+        </div>
+        <div class="field-grid">
+          <div class="field">
+            <label for="gold_making_mode">Gold basis</label>
+            <select id="gold_making_mode" name="gold_making_mode" onchange="syncMaking()">
+              <option value="percent" {% if not settings or (settings.gold_making_mode or 'percent') == 'percent' %}selected{% endif %}>Percentage of metal value</option>
+              <option value="flat" {% if settings and settings.gold_making_mode == 'flat' %}selected{% endif %}>Flat ₹ per gram</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="silver_making_mode">Silver basis</label>
+            <select id="silver_making_mode" name="silver_making_mode" onchange="syncMaking()">
+              <option value="flat" {% if not settings or (settings.silver_making_mode or 'flat') == 'flat' %}selected{% endif %}>Flat ₹ per 10 g</option>
+              <option value="percent" {% if settings and settings.silver_making_mode == 'percent' %}selected{% endif %}>Percentage of metal value</option>
+            </select>
+          </div>
+        </div>
+        <div class="field-grid">
+          <div class="field" id="gold-pct-field">
+            <label for="gold_making_charge_percent">Gold (%)</label>
+            <input type="number" id="gold_making_charge_percent" name="gold_making_charge_percent" step="0.01" min="0"
+                   value="{{ settings.gold_making_charge_percent if settings else 5 }}">
+            <div class="help">Percentage of the line's metal value.</div>
+          </div>
+          <div class="field" id="gold-flat-field" style="display:none">
+            <label for="gold_making_flat">Gold (₹/gram)</label>
+            <input type="number" id="gold_making_flat" name="gold_making_flat" step="0.01" min="0"
+                   value="{{ ((settings.gold_making_flat or 0)/100) if settings else 0 }}">
+            <div class="help">Multiplied by the item's weight.</div>
+          </div>
+          <div class="field" id="silver-flat-field">
+            <label for="silver_making_charge_per_10gm">Silver (₹/10gm)</label>
+            <input type="number" id="silver_making_charge_per_10gm" name="silver_making_charge_per_10gm" step="0.01" min="0"
+                   value="{{ ((settings.silver_making_charge_per_10gm or 0)/100) if settings else 150 }}">
+            <div class="help">Rupees per 10 grams.</div>
+          </div>
+          <div class="field" id="silver-pct-field" style="display:none">
+            <label for="silver_making_percent">Silver (%)</label>
+            <input type="number" id="silver_making_percent" name="silver_making_percent" step="0.01" min="0"
+                   value="{{ settings.silver_making_percent if settings else 0 }}">
+            <div class="help">Percentage of the line's metal value.</div>
+          </div>
+        </div>
+
+        <div class="card-head" style="margin-top:8px"><h3>Metal prices (₹/gram)</h3></div>
+        <div class="field-grid">
+          <div class="field">
+            <label for="gold_price">Gold *</label>
+            <input type="number" id="gold_price" name="gold_price" step="0.01" min="0.01" required
+                   value="{{ ((settings.gold_manual_price or 0)/100) if settings else 6000 }}">
+          </div>
+          <div class="field">
+            <label for="silver_price">Silver *</label>
+            <input type="number" id="silver_price" name="silver_price" step="0.01" min="0.01" required
+                   value="{{ ((settings.silver_manual_price or 0)/100) if settings else 80 }}">
+          </div>
+        </div>
+        <p class="mini">⚡ Saving instantly reprices <strong>every</strong> auto-priced product. Past bills never change.</p>
+
+        <div class="card-head" style="margin-top:8px"><h3>Tax &amp; bill display</h3></div>
+        <label class="check">
+          <input type="checkbox" id="gst_enabled" name="gst_enabled" {% if settings is none or settings.gst_enabled %}checked{% endif %}>
+          <span>Charge GST (3% on gold/silver bills) — uncheck to bill GST-free</span>
+        </label>
+        <label class="check">
+          <input type="checkbox" id="show_making_charges" name="show_making_charges" {% if settings is none or settings.show_making_charges %}checked{% endif %}>
+          <span>Show the Making column on printed bills</span>
+        </label>
+        <label class="check">
+          <input type="checkbox" id="show_gstin" name="show_gstin" {% if settings is none or settings.show_gstin %}checked{% endif %}>
+          <span>Print GSTIN on bills — firm GSTIN, plus the customer's when they have one</span>
+        </label>
+
+        <div class="form-actions">
+          <button type="submit" class="btn btn-success">Save settings</button>
+          <a href="{{ url_for('index') }}" class="btn btn-ghost">Cancel</a>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div>
+    <div class="card">
+      <div class="card-head"><h3>🏷️ Tags &amp; archives</h3></div>
+      <p class="mini" style="margin-bottom:12px">
+        Design thermal jewellery tags per category, and keep a permanent record of deleted bills.
+      </p>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <a href="{{ url_for('tag_designer') }}" class="btn btn-gold">Tag designer</a>
+        <a href="{{ url_for('deleted_bills') }}" class="btn btn-ghost">Deleted bills</a>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-head"><h3>💾 Data &amp; backup</h3></div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px">
+        <a href="{{ url_for('backup_download') }}" class="btn btn-success">⬇ Download backup</a>
+        <a href="{{ url_for('export_data') }}" class="btn btn-ghost">Export JSON</a>
+        <a href="{{ url_for('export_invoices_csv') }}" class="btn btn-ghost">Bills CSV</a>
+        <a href="{{ url_for('export_gstr1') }}" class="btn btn-ghost">GSTR-1 CSV</a>
+      </div>
+      <form method="POST" action="{{ url_for('backup_restore') }}" enctype="multipart/form-data"
+            data-confirm="Replace the live database with this file? A safety copy is kept.">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="field">
+          <label for="backup_file">Restore from .db file</label>
+          <input type="file" id="backup_file" name="backup_file" accept=".db" required>
+          <div class="help">Current data is copied to pre-restore-*.db first.</div>
+        </div>
+        <button type="submit" class="btn btn-danger">Restore database</button>
+      </form>
+    </div>
+
+    {% if session.get('is_admin') %}
+    <div class="card">
+      <div class="card-head"><h3>Team</h3></div>
+      <p class="mini" style="margin-bottom:12px">Add cashiers, reset passwords, read the audit trail.</p>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <a href="{{ url_for('users') }}" class="btn btn-ghost">Manage users</a>
+        <a href="{{ url_for('audit_logs') }}" class="btn btn-ghost">Audit log</a>
+      </div>
+    </div>
+    {% endif %}
+  </div>
+</div>
+<script>
+/* Only the value box matching each metal's basis stays visible. */
+function syncMaking(){
+  var g = document.getElementById('gold_making_mode').value === 'flat';
+  var s = document.getElementById('silver_making_mode').value === 'percent';
+  document.getElementById('gold-pct-field').style.display = g ? 'none' : '';
+  document.getElementById('gold-flat-field').style.display = g ? '' : 'none';
+  document.getElementById('silver-flat-field').style.display = s ? 'none' : '';
+  document.getElementById('silver-pct-field').style.display = s ? '' : 'none';
+}
+syncMaking();
+</script>
+
+{% endblock %}

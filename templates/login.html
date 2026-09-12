@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block title %}Sign in{% endblock %}
+
+{% block head %}
+<style>
+.login-wrap{min-height:calc(100vh - 230px);display:grid;place-items:center;padding:20px}
+.login-card{width:100%;max-width:380px;padding:28px;margin:0}
+.login-mark{width:46px;height:46px;border-radius:13px;display:grid;place-items:center;font-size:22px;
+  background:linear-gradient(160deg,#e5c558,#9c6f12);color:#2a1f06;margin-bottom:16px;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.45)}
+.login-card h1{font-size:21px;margin-bottom:4px}
+.login-card .sub{color:var(--muted);font-size:13.5px;margin-bottom:20px}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="login-wrap">
+  <form method="POST" class="card login-card">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="login-mark">₹</div>
+    <h1>Sign in</h1>
+    <p class="sub">{{ shop_settings.firm_name if shop_settings and shop_settings.firm_name else 'Gold & Silver Billing' }}</p>
+    <div class="field">
+      <label for="username">Username</label>
+      <input type="text" id="username" name="username" autocomplete="username" autofocus required>
+    </div>
+    <div class="field">
+      <label for="password">Password</label>
+      <input type="password" id="password" name="password" autocomplete="current-password" required>
+    </div>
+    <button type="submit" class="btn btn-gold btn-block" style="margin-top:6px">Sign in</button>
+  </form>
+</div>
+{% endblock %}

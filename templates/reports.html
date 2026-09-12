@@ -1,0 +1,422 @@
+{% extends "base.html" %}
+{% block title %}Reports{% endblock %}
+
+{% block head %}
+<style>
+.bars{display:flex;align-items:flex-end;gap:3px;height:140px;padding:8px 0 0;
+  border-bottom:1px solid var(--line);overflow-x:auto}
+.bar-col{flex:1 1 0;min-width:14px;display:flex;flex-direction:column;
+  justify-content:flex-end;align-items:center;height:100%}
+.bar{width:100%;max-width:34px;background:linear-gradient(180deg,#d9b34a,#b4811d);
+  border-radius:3px 3px 0 0;min-height:1px}
+.bar-lab{font-size:9.5px;color:var(--muted);margin-top:4px;white-space:nowrap}
+.trend-note{font-size:12.5px;color:var(--muted);margin-top:6px}
+.split{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:18px}
+.delta{font-size:12px;font-weight:700;margin-top:2px}
+.delta.up{color:var(--green)} .delta.down{color:var(--red)} .delta.flat{color:var(--muted)}
+.mix{display:flex;height:16px;border-radius:8px;overflow:hidden;margin:10px 0 8px;
+  border:1px solid var(--line)}
+.mix span{display:block}
+.legend{display:flex;flex-wrap:wrap;gap:12px;font-size:12.5px;color:var(--muted)}
+.legend i{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:5px}
+.aging-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:12px}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Reports</h1>
+    <div class="sub">
+      {{ span_days }} day{{ '' if span_days == 1 else 's' }} analysed ·
+      cancelled bills are never counted in money totals
+    </div>
+  </div>
+  <div class="page-actions">
+    <a href="{{ url_for('reports_csv', f=f, t=t, status=status) }}" class="btn btn-ghost">⬇ Bills CSV</a>
+    <a href="{{ url_for('reports_products_csv', f=f, t=t, status=status) }}" class="btn btn-ghost">⬇ Item CSV</a>
+    <a href="{{ url_for('export_gstr1') }}" class="btn btn-gold">GSTR-1 CSV</a>
+  </div>
+</div>
+
+<div class="card">
+  <form method="GET" class="toolbar">
+    <div class="field" style="margin:0;flex:0 0 auto">
+      <label for="from">From</label>
+      <input type="date" id="from" name="from" value="{{ f }}">
+    </div>
+    <div class="field" style="margin:0;flex:0 0 auto">
+      <label for="to">To</label>
+      <input type="date" id="to" name="to" value="{{ t }}">
+    </div>
+    <div class="field" style="margin:0;flex:0 0 auto;min-width:150px">
+      <label for="status">Status</label>
+      <select id="status" name="status">
+        <option value="all" {% if status == 'all' %}selected{% endif %}>All</option>
+        <option value="pending" {% if status == 'pending' %}selected{% endif %}>Pending</option>
+        <option value="paid" {% if status == 'paid' %}selected{% endif %}>Paid</option>
+        <option value="cancelled" {% if status == 'cancelled' %}selected{% endif %}>Cancelled</option>
+      </select>
+    </div>
+    <button type="submit" class="btn btn-primary">Generate</button>
+    <a href="{{ url_for('reports') }}" class="btn btn-ghost">Reset</a>
+  </form>
+  <div class="chips">
+    {% set today = now().strftime('%Y-%m-%d') %}
+    <a class="chip {{ 'on' if not f and not t }}" href="{{ url_for('reports', status=status) }}">All time</a>
+    <a class="chip {{ 'on' if f == today }}" href="{{ url_for('reports', f=today, t=today, status=status) }}">Today</a>
+    <a class="chip" href="{{ url_for('reports', f=quick.week, status=status) }}">Last 7 days</a>
+    <a class="chip" href="{{ url_for('reports', f=quick.month, status=status) }}">Last 30 days</a>
+    <a class="chip" href="{{ url_for('reports', f=quick.mtd, status=status) }}">This month</a>
+  </div>
+
+  <div class="stat-grid">
+    <div class="stat">
+      <div class="stat-label">Revenue</div>
+      <div class="stat-value">₹{{ (total_revenue)|inr0 }}</div>
+      {% if delta.revenue is not none %}
+      <div class="delta {{ 'up' if delta.revenue > 0 else ('down' if delta.revenue < 0 else 'flat') }}">
+        {{ '%+.1f'|format(delta.revenue) }}% vs previous {{ span_days }}d
+      </div>
+      {% endif %}
+      <div class="stat-hint">ex-GST ₹{{ (net_sales)|inr0 }}</div>
+    </div>
+    <div class="stat">
+      <div class="stat-label">Bills</div>
+      <div class="stat-value">{{ total_invoices }}</div>
+      {% if delta.bills is not none %}
+      <div class="delta {{ 'up' if delta.bills > 0 else ('down' if delta.bills < 0 else 'flat') }}">
+        {{ '%+.1f'|format(delta.bills) }}% vs previous
+      </div>
+      {% endif %}
+      <div class="stat-hint">{{ pending_invoices }} still pending</div>
+    </div>
+    <div class="stat">
+      <div class="stat-label">Average bill</div>
+      <div class="stat-value">₹{{ (avg_bill)|inr0 }}</div>
+      {% if delta.avg_bill is not none %}
+      <div class="delta {{ 'up' if delta.avg_bill > 0 else ('down' if delta.avg_bill < 0 else 'flat') }}">
+        {{ '%+.1f'|format(delta.avg_bill) }}% vs ₹{{ (delta.prev_avg)|inr0 }}
+      </div>
+      {% endif %}
+    </div>
+    <div class="stat good">
+      <div class="stat-label">Collected</div>
+      <div class="stat-value">₹{{ (collected)|inr0 }}</div>
+      <div class="stat-hint">{{ (collected / total_revenue * 100)|round(1) if total_revenue else 0 }}% of billed</div>
+    </div>
+    <div class="stat {{ 'warn' if outstanding > 0 else 'good' }}">
+      <div class="stat-label">Outstanding</div>
+      <div class="stat-value">₹{{ (outstanding)|inr0 }}</div>
+      <div class="stat-hint">money still owed to you</div>
+    </div>
+    <div class="stat">
+      <div class="stat-label">Discounts given</div>
+      <div class="stat-value">₹{{ (total_discount)|inr0 }}</div>
+      <div class="stat-hint">exchange ₹{{ (total_exchange)|inr0 }}</div>
+    </div>
+  </div>
+
+  {% if delta.prev_bills %}
+  <p class="mini" style="margin-top:12px">
+    Compared against {{ delta.prev_label }} ({{ delta.prev_bills }} bill(s), ₹{{ (delta.prev_revenue)|inr0 }}).
+  </p>
+  {% elif rolling and rolling.prev_bills %}
+  <p class="mini" style="margin-top:12px">
+    All-time figures above. Recent trend: last 30 days
+    <strong>₹{{ (rolling.cur_revenue)|inr0 }}</strong> across {{ rolling.cur_bills }} bill(s)
+    {% if rolling.revenue is not none %}
+      — <strong class="{{ 'up' if rolling.revenue > 0 else 'down' }}">{{ '%+.1f'|format(rolling.revenue) }}%</strong>
+      vs the 30 days before (₹{{ (rolling.prev_revenue)|inr0 }}, {{ rolling.prev_bills }} bill(s)).
+    {% else %}
+      — no bills in the 30 days before that to compare against.
+    {% endif %}
+  </p>
+  {% endif %}
+</div>
+
+<div class="card">
+  <div class="card-head">
+    <h3>{{ 'Daily' if daily else 'Monthly' }} revenue</h3>
+    <span class="hint">{{ trend|length }} period(s)</span>
+  </div>
+  {% if trend %}
+  {% set peak = trend|map(attribute=1)|max %}
+  <div class="bars">
+    {% for k, v in trend %}
+    <div class="bar-col" title="{{ k }} · ₹{{ (v)|inr0 }}">
+      <div class="bar" style="height: {{ (v / peak * 100) if peak else 0 }}%"></div>
+      <div class="bar-lab">{{ k[8:10] if daily else k[5:7] }}{{ '' if daily else '/' + k[2:4] }}</div>
+    </div>
+    {% endfor %}
+  </div>
+  <p class="trend-note">Peak {{ 'day' if daily else 'month' }}: ₹{{ (peak)|inr0 }} ·
+    slowest: ₹{{ (trend|map(attribute=1)|min)|inr0 }}</p>
+  {% else %}
+  <div class="empty"><span class="big">📊</span>No revenue in this period.</div>
+  {% endif %}
+</div>
+
+<div class="split">
+  <div class="card">
+    <div class="card-head"><h3>Metal-wise sales</h3><span class="hint">weight actually sold</span></div>
+    {% if metal_revenue %}
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Metal</th><th class="r">Qty</th><th class="r">Weight</th><th class="r">Revenue</th><th class="r">Share</th></tr></thead>
+        <tbody>
+        {% for metal, m in metal_revenue.items() %}
+          <tr>
+            <td><span class="badge badge-{{ 'gold' if metal == 'gold' else 'neutral' }}">{{ metal|capitalize }}</span></td>
+            <td class="r">{{ '%.2f'|format(m.qty) }}</td>
+            <td class="r">{{ '%.3f'|format(m.weight) }} g</td>
+            <td class="r">₹{{ (m.amount)|inr }}</td>
+            <td class="r">{{ (m.amount / total_revenue * 100)|round(1) if total_revenue else 0 }}%</td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="empty"><span class="big">◈</span>Nothing sold in this period.</div>
+    {% endif %}
+  </div>
+
+  <div class="card">
+    <div class="card-head"><h3>How you got paid</h3><span class="hint">payments received</span></div>
+    {% if pay_by_method %}
+    {% set pay_total = pay_by_method.values()|sum %}
+    <div class="mix">
+      {% for m, amt in pay_by_method.items() %}
+      <span style="width: {{ (amt / pay_total * 100) if pay_total else 0 }}%;
+        background: {{ {'cash':'#15803d','UPI':'#1d4ed8','bank_transfer':'#b4811d','card':'#7c3aed'}.get(m, '#7a7268') }}"
+        title="{{ m }} · ₹{{ (amt)|inr0 }}"></span>
+      {% endfor %}
+    </div>
+    <div class="legend">
+      {% for m, amt in pay_by_method.items() %}
+      <span><i style="background: {{ {'cash':'#15803d','UPI':'#1d4ed8','bank_transfer':'#b4811d','card':'#7c3aed'}.get(m, '#7a7268') }}"></i>
+        {{ m|replace('_',' ')|capitalize }} · ₹{{ (amt)|inr0 }}
+        ({{ (amt / pay_total * 100)|round(1) if pay_total else 0 }}%)</span>
+      {% endfor %}
+    </div>
+    {% else %}
+    <div class="empty"><span class="big">💳</span>No payments recorded.</div>
+    {% endif %}
+  </div>
+</div>
+
+<div class="split">
+  <div class="card">
+    <div class="card-head"><h3>Best sellers</h3><span class="hint">by revenue</span></div>
+    {% if top_products %}
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>#</th><th>Item</th><th class="r">Qty</th><th class="r">Weight</th><th class="r">Revenue</th></tr></thead>
+        <tbody>
+        {% for name, s in top_products %}
+        <tr><td class="mini">{{ loop.index }}</td><td>{{ name }}</td>
+          <td class="r">{{ '%.2f'|format(s.qty) }}</td>
+          <td class="r">{{ '%.2f'|format(s.weight) }} g</td>
+          <td class="r">₹{{ (s.amount)|inr }}</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="empty"><span class="big">🏆</span>No sales yet.</div>
+    {% endif %}
+  </div>
+
+  <div class="card">
+    <div class="card-head"><h3>Category performance</h3></div>
+    {% if top_categories %}
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Category</th><th class="r">Qty</th><th class="r">Revenue</th><th class="r">Share</th></tr></thead>
+        <tbody>
+        {% for name, s in top_categories %}
+        <tr><td>{{ name }}</td><td class="r">{{ '%.2f'|format(s.qty) }}</td>
+          <td class="r">₹{{ (s.amount)|inr }}</td>
+          <td class="r">{{ (s.amount / total_revenue * 100)|round(1) if total_revenue else 0 }}%</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="empty"><span class="big">🗂️</span>No categorised sales.</div>
+    {% endif %}
+  </div>
+</div>
+
+<div class="split">
+  <div class="card">
+    <div class="card-head"><h3>Top customers</h3><span class="hint">by revenue this period</span></div>
+    {% if top_clients %}
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Client</th><th class="r">Bills</th><th class="r">Revenue</th><th class="r">Paid</th></tr></thead>
+        <tbody>
+        {% for name, c in top_clients %}
+        <tr><td>{{ name }}<div class="mini">{{ c.phone }}</div></td>
+          <td class="r">{{ c.bills }}</td>
+          <td class="r">₹{{ (c.revenue)|inr }}</td>
+          <td class="r">₹{{ (c.paid)|inr }}</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="empty"><span class="big">👥</span>No customers billed yet.</div>
+    {% endif %}
+  </div>
+
+  <div class="card">
+    <div class="card-head"><h3>Money owed, by age</h3>
+      <span class="hint">₹{{ (outstanding)|inr0 }} total</span></div>
+    <div class="aging-grid">
+      {% for bucket in ['0-30','31-60','61-90','90+'] %}
+      <div class="stat {{ 'warn' if bucket in ('61-90','90+') and aging[bucket] else '' }}">
+        <div class="stat-label">{{ bucket }} days</div>
+        <div class="stat-value" style="font-size:19px">₹{{ (aging[bucket])|inr0 }}</div>
+      </div>
+      {% endfor %}
+    </div>
+    <p class="mini" style="margin-top:12px">
+      Anything past 90 days is usually worth a phone call before it goes bad.
+    </p>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-head">
+    <h3>Profit</h3>
+    <span class="hint">cost snapshot taken at the time of each sale</span>
+  </div>
+  <div class="stat-grid">
+    <div class="stat"><div class="stat-label">Revenue</div><div class="stat-value">₹{{ (total_revenue)|inr0 }}</div></div>
+    <div class="stat"><div class="stat-label">Cost of goods</div><div class="stat-value">₹{{ (est_cost)|inr0 }}</div></div>
+    <div class="stat"><div class="stat-label">Gross Profit</div><div class="stat-value">₹{{ (gross_profit)|inr0 }}</div>
+      <div class="stat-hint">sales − cost</div></div>
+    <div class="stat good"><div class="stat-label">Net Profit</div><div class="stat-value">₹{{ (net_profit)|inr0 }}</div>
+      <div class="stat-hint">ex-GST · {{ margin_pct }}% margin</div></div>
+  </div>
+  {% if missing_cost %}
+  <p class="mini" style="margin-top:12px">
+    ⚠️ {{ missing_cost }} product(s) have no cost price — profit is understated until you set them.
+  </p>
+  {% endif %}
+</div>
+
+<div class="split">
+  <div class="card">
+    <div class="card-head"><h3>GST collected</h3>
+      <span class="hint">₹{{ (total_gst)|inr }} across {{ gst_bills }} bill(s)</span></div>
+    {% if gst_by_month %}
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Month</th><th class="r">GST</th></tr></thead>
+        <tbody>
+        {% for month, amt in gst_by_month.items() %}
+        <tr><td>{{ month }}</td><td class="r">₹{{ (amt)|inr }}</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="empty"><span class="big">🧾</span>No GST in this period.</div>
+    {% endif %}
+  </div>
+
+  <div class="card">
+    <div class="card-head"><h3>Voided &amp; deleted bills</h3>
+      <span class="hint">excluded from every figure above</span></div>
+    <div class="stat-grid">
+      <div class="stat"><div class="stat-label">Cancelled</div>
+        <div class="stat-value">{{ cancelled_count }}</div>
+        <div class="stat-hint">₹{{ (cancelled_total)|inr0 }}</div></div>
+      <div class="stat"><div class="stat-label">Deleted</div>
+        <div class="stat-value">{{ deleted_count }}</div>
+        <div class="stat-hint">₹{{ (deleted_total)|inr0 }}</div></div>
+    </div>
+    {% if deleted_count %}
+    <p class="mini" style="margin-top:12px">
+      Every deleted bill is kept with who removed it and why —
+      <a href="{{ url_for('deleted_bills') }}">open the archive</a>.
+    </p>
+    {% endif %}
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-head"><h3>Stock position</h3>
+    <span class="hint">sale value ₹{{ (stock_value_sale)|inr0 }} · cost value ₹{{ (stock_value_cost)|inr0 }}</span></div>
+  <div class="split">
+    <div>
+      <div class="card-head"><h3>⚠️ Low stock (≤ 5 pcs)</h3></div>
+      {% if low_stock %}
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Item</th><th class="r">Stock</th><th class="r">Actions</th></tr></thead>
+          <tbody>
+          {% for p in low_stock %}
+          <tr><td>{{ p.name }}</td><td class="r">{{ p.stock_quantity }}</td>
+            <td><div class="row-actions"><a href="{{ url_for('view_product', product_id=p.id) }}" class="btn btn-ghost btn-sm">Open</a></div></td></tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}<div class="empty"><span class="big">✓</span>Everything is above 5 pieces.</div>{% endif %}
+    </div>
+    <div>
+      <div class="card-head"><h3>🔴 Out of stock ({{ out_stock|length }})</h3></div>
+      {% if out_stock %}
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Item</th><th>Metal</th><th class="r">Actions</th></tr></thead>
+          <tbody>
+          {% for p in out_stock %}
+          <tr><td>{{ p.name }}</td><td>{{ p.item_type|capitalize }}</td>
+            <td><div class="row-actions"><a href="{{ url_for('view_product', product_id=p.id) }}" class="btn btn-gold btn-sm">Restock</a></div></td></tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}<div class="empty"><span class="big">✓</span>Nothing out of stock.</div>{% endif %}
+    </div>
+  </div>
+  {% if dead_stock %}
+  <p class="mini" style="margin-top:14px">
+    💤 {{ dead_stock|length }} item(s) never sold — ₹{{ (dead_value)|inr0 }} of stock sitting still:
+    {{ dead_stock[:8]|map(attribute='name')|join(', ') }}{% if dead_stock|length > 8 %}…{% endif %}
+  </p>
+  {% endif %}
+</div>
+
+<div class="card">
+  <div class="card-head"><h3>Bills ({{ total_invoices }})</h3>
+    <span class="hint">showing the latest {{ recent_invoices|length }}</span></div>
+  {% if recent_invoices %}
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Bill</th><th>Client</th><th>GSTIN</th><th>Date</th><th>Status</th><th class="r">Total</th><th class="r">Actions</th></tr></thead>
+      <tbody>
+        {% for invoice in recent_invoices %}
+        <tr>
+          <td><a href="{{ url_for('view_invoice', invoice_id=invoice.id) }}"><strong>{{ invoice.invoice_number }}</strong></a></td>
+          <td>{{ invoice.client.name if invoice.client else '–' }}</td>
+          <td class="mini">{{ invoice.client_gstin or '–' }}</td>
+          <td class="mini">{{ invoice.date_created.strftime('%d %b %Y') }}</td>
+          <td><span class="badge badge-{{ invoice.status }}">{{ invoice.status|capitalize }}</span></td>
+          <td class="r">₹{{ (invoice.total)|inr }}</td>
+          <td><div class="row-actions"><a href="{{ url_for('view_invoice', invoice_id=invoice.id) }}" class="btn btn-ghost btn-sm">View</a></div></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="empty"><span class="big">🧾</span>No bills in this period.</div>
+  {% endif %}
+</div>
+{% endblock %}

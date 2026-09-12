@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+{% block title %}Edit product{% endblock %}
+
+{% block content %}
+<div class="page-head">
+  <div><h1>Edit product</h1><div class="sub">{{ product.sku }} · price follows the metal rate unless a custom price is set</div></div>
+  <div class="page-actions"><a href="{{ url_for('view_product', product_id=product.id) }}" class="btn btn-ghost">Back</a></div>
+</div>
+
+<div class="card" style="max-width:720px">
+  <form method="POST">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="field-grid">
+      <div class="field">
+        <label for="name">Product name *</label>
+        <input type="text" id="name" name="name" value="{{ product.name }}" required>
+      </div>
+      <div class="field">
+        <label for="category">Category</label>
+        <input type="text" id="category" name="category" value="{{ product.category or '' }}" placeholder="e.g. Handring">
+      </div>
+    </div>
+
+    <div class="field">
+      <label>Sold by</label>
+      <input type="text" value="{{ product.item_type|capitalize }} · {% if (product.unit or 'pcs') == 'g' %}grams{% else %}pieces{% endif %}" disabled>
+      <div class="help">Metal and unit are fixed once the item has been billed.</div>
+    </div>
+
+    <div class="field-grid">
+      {% if (product.unit or 'pcs') == 'g' %}
+      <div class="field">
+        <label for="stock_weight">Stock (grams)</label>
+        <input type="number" id="stock_weight" name="stock_weight" step="0.01" min="0" value="{{ product.stock_weight or 0 }}">
+      </div>
+      {% else %}
+      <div class="field">
+        <label for="stock_quantity">Stock (pieces)</label>
+        <input type="number" id="stock_quantity" name="stock_quantity" min="0" value="{{ product.stock_quantity }}">
+      </div>
+      {% endif %}
+      {% if (product.unit or 'pcs') == 'g' %}
+      <div class="field">
+        <label>Weight per unit (g)</label>
+        <input type="text" value="1 g — sold by weight" disabled>
+        <div class="help">Weighed goods are priced per gram; enter the grams when billing.</div>
+      </div>
+      {% else %}
+      <div class="field">
+        <label for="weight_per_unit">Weight per unit (g)</label>
+        <input type="number" id="weight_per_unit" name="weight_per_unit" step="0.01" min="0" value="{{ product.weight_per_unit }}">
+      </div>
+      {% endif %}
+    </div>
+
+    <div class="field-grid">
+      <div class="field">
+        <label for="cost_price">Cost price (₹)</label>
+        <input type="number" id="cost_price" name="cost_price" step="0.01" min="0"
+               value="{{ ((product.cost_price or 0)/100)|round(2) }}">
+      </div>
+      <div class="field">
+        <label for="custom_price">Custom sale price (₹)</label>
+        <input type="number" id="custom_price" name="custom_price" step="0.01" min="0"
+               value="{{ ((product.custom_price or 0)/100)|round(2) }}">
+        <div class="help">0 = priced from the live metal rate.</div>
+      </div>
+    </div>
+
+    <div class="field">
+      <label for="description">Description</label>
+      <textarea id="description" name="description" rows="2">{{ product.description or '' }}</textarea>
+    </div>
+
+    <div class="form-actions">
+      <button type="submit" class="btn btn-success">Save changes</button>
+      <a href="{{ url_for('view_product', product_id=product.id) }}" class="btn btn-ghost">Cancel</a>
+    </div>
+  </form>
+</div>
+{% endblock %}

@@ -1,0 +1,150 @@
+{% extends "base.html" %}
+{% block title %}{{ client.name }}{% endblock %}
+
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>{{ client.name }}</h1>
+    <div class="sub">{{ client.phone }}{% if client.email %} · {{ client.email }}{% endif %}{% if client.gstin %} · GSTIN {{ client.gstin }}{% endif %}{% if client.address %} · {{ client.address }}{% endif %}</div>
+  </div>
+  <div class="page-actions">
+    <a href="{{ url_for('create_invoice') }}?client_id={{ client.id }}" class="btn btn-gold">+ New Bill</a>
+    {% if (client.balance or 0) > 0 %}
+    <a href="{{ url_for('pay_remaining', client_id=client.id) }}" class="btn btn-success">Collect ₹{{ (client.balance)|inr }}</a>
+    {% endif %}
+    <a href="{{ url_for('client_statement', client_id=client.id) }}" class="btn btn-ghost">Statement</a>
+    <a href="{{ url_for('edit_client', client_id=client.id) }}" class="btn btn-ghost">Edit</a>
+    <form method="POST" class="inline" action="{{ url_for('delete_client', client_id=client.id) }}"
+          data-confirm="Delete {{ client.name }}? Only possible when they have no bills.">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button type="submit" class="btn btn-danger">Delete</button>
+    </form>
+    <a href="{{ url_for('clients') }}" class="btn btn-ghost">Back</a>
+  </div>
+</div>
+
+<div class="stat-grid" style="margin-bottom:18px">
+  <div class="stat">
+    <div class="stat-label">Purchases</div>
+    <div class="stat-value">₹{{ (client.total_purchases or 0)|inr0 }}</div>
+  </div>
+  <div class="stat good">
+    <div class="stat-label">Paid</div>
+    <div class="stat-value">₹{{ (client.total_payments or 0)|inr0 }}</div>
+  </div>
+  <div class="stat {{ 'warn' if (client.balance or 0) > 0 else 'good' }}">
+    <div class="stat-label">Balance</div>
+    <div class="stat-value">₹{{ (client.balance or 0)|inr0 }}</div>
+    <div class="stat-hint">{{ 'owed to you' if (client.balance or 0) > 0 else 'all settled' }}</div>
+  </div>
+  <div class="stat">
+    <div class="stat-label">Credit limit</div>
+    <div class="stat-value">₹{{ (client.credit_limit or 0)|inr0 }}</div>
+  </div>
+</div>
+
+{% if metal_summary %}
+<div class="card tight" style="margin-bottom:18px">
+  <div class="card-head"><h3>Metal bought</h3></div>
+  <div class="stat-grid">
+    {% for metal, m in metal_summary.items() %}
+    <div class="stat">
+      <div class="stat-label">{{ metal|capitalize }}</div>
+      <div class="stat-value">{{ "%.1f"|format(m.weight) }}g</div>
+      <div class="stat-hint">₹{{ (m.amount)|inr0 }} · {{ m.qty|round(2) }} pcs</div>
+    </div>
+    {% endfor %}
+  </div>
+  {% if pay_by_method %}
+  <p class="mini" style="margin-top:12px">Paid via {% for m, a in pay_by_method.items() %}{{ m|capitalize }} ₹{{ (a)|inr0 }}{% if not loop.last %}, {% endif %}{% endfor %}</p>
+  {% endif %}
+</div>
+{% endif %}
+
+<div class="card">
+  <div class="card-head"><h3>Metal Purchase History</h3></div>
+  {% if metal_lines %}
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Date</th><th>Bill</th><th>Item</th><th>Metal</th><th>Weight</th><th class="r">Amount</th></tr></thead>
+      <tbody>
+        {% for dt, no, desc, itype, qty, wt, amt in metal_lines %}
+        <tr>
+          <td class="mini">{{ dt.strftime('%d %b %Y') }}</td>
+          <td><a href="{{ url_for('invoices') }}?q={{ no }}">{{ no }}</a></td>
+          <td>{{ desc }} ({{ qty }})</td>
+          <td><span class="badge badge-{{ 'gold' if itype == 'gold' else 'neutral' }}">{{ (itype or 'general')|capitalize }}</span></td>
+          <td>{% if wt %}{{ wt }}g × {{ qty }} = {{ "%.1f"|format(wt * qty) }}g{% else %}–{% endif %}</td>
+          <td class="r">₹{{ (amt or 0)|inr }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="empty"><span class="big">◈</span>No purchases yet.</div>
+  {% endif %}
+</div>
+
+<div class="card">
+  <div class="card-head"><h3>Bills</h3><span class="hint">{{ invoices|length }} total</span></div>
+  {% if invoices %}
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Bill #</th><th>Date</th><th>Status</th><th class="r">Total</th><th class="r">Paid</th>
+        <th class="r">Due</th><th class="r">Actions</th></tr></thead>
+      <tbody>
+        {% for invoice in invoices %}
+        <tr class="{{ 'is-void' if invoice.status == 'cancelled' }}">
+          <td><a href="{{ url_for('view_invoice', invoice_id=invoice.id) }}"><strong>{{ invoice.invoice_number }}</strong></a></td>
+          <td class="mini">{{ invoice.date_created.strftime('%d %b %Y') }}</td>
+          <td><span class="badge badge-{{ invoice.status }}">{{ invoice.status|capitalize }}</span></td>
+          <td class="r">₹{{ (invoice.total)|inr }}</td>
+          <td class="r mini">₹{{ (invoice.paid_amount)|inr }}</td>
+          <td class="r">
+            {% if (invoice.remaining_amount or 0) > 0 %}
+            <strong style="color:var(--amber)">₹{{ (invoice.remaining_amount)|inr }}</strong>
+            {% else %}<span class="mini">–</span>{% endif %}
+          </td>
+          <td>
+            <div class="row-actions">
+              <a href="{{ url_for('view_invoice', invoice_id=invoice.id) }}" class="btn btn-ghost btn-sm">View</a>
+              {% if invoice.status != 'cancelled' and (invoice.remaining_amount or 0) > 0 %}
+              <a href="{{ url_for('add_payment', invoice_id=invoice.id) }}" class="btn btn-success btn-sm">Pay</a>
+              {% endif %}
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="empty"><span class="big">🧾</span>No bills yet.</div>
+  {% endif %}
+</div>
+
+<div class="card">
+  <div class="card-head"><h3>Payments</h3></div>
+  {% if payments %}
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Date</th><th class="r">Amount</th><th>Method</th><th>Bill</th><th>Notes</th></tr></thead>
+      <tbody>
+        {% for payment in payments %}
+        <tr>
+          <td class="mini">{{ payment.payment_date.strftime('%d %b %Y') }}</td>
+          <td class="r">₹{{ (payment.amount)|inr }}</td>
+          <td>{{ (payment.payment_method or 'cash')|capitalize }}</td>
+          <td>{% if payment.invoice_payment %}<a href="{{ url_for('view_invoice', invoice_id=payment.invoice_payment.id) }}">{{ payment.invoice_payment.invoice_number }}</a>{% else %}–{% endif %}</td>
+          <td class="mini">{{ payment.notes or '–' }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="empty"><span class="big">💵</span>No payments yet.</div>
+  {% endif %}
+</div>
+{% endblock %}

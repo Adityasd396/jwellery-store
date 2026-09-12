@@ -1,0 +1,228 @@
+{% extends "base.html" %}
+{% block title %}{{ invoice.invoice_number }}{% endblock %}
+
+{% block content %}
+<div class="page-head no-print">
+  <div>
+    <h1>{{ invoice.invoice_number }}</h1>
+    <div class="sub">
+      {{ invoice.date_created.strftime('%d %b %Y') }} ·
+      {{ invoice.client.name if invoice.client else '—' }} ·
+      <span class="badge badge-{{ invoice.status }}">{{ invoice.status }}</span>
+    </div>
+  </div>
+  <div class="page-actions">
+    <button onclick="window.print()" class="btn btn-primary">🖨️ Print</button>
+    <a href="{{ url_for('invoice_pdf', invoice_id=invoice.id) }}" target="_blank" rel="noopener" class="btn btn-ghost">⬇ PDF</a>
+    <a href="{{ wa_link }}" id="wa-link" target="_blank" rel="noopener" class="btn btn-success">Share on WhatsApp</a>
+    {% if invoice.status != 'cancelled' %}
+    <a href="{{ url_for('add_payment', invoice_id=invoice.id) }}" class="btn btn-gold">Add Payment</a>
+    <form method="POST" class="inline" action="{{ url_for('update_invoice_status', invoice_id=invoice.id) }}"
+          data-confirm="Cancel {{ invoice.invoice_number }}? Stock goes back and its payments are removed.">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="status" value="cancelled">
+      <button type="submit" class="btn btn-ghost">Cancel bill</button>
+    </form>
+    {% endif %}
+    <form method="POST" class="inline" action="{{ url_for('delete_invoice', invoice_id=invoice.id) }}"
+          data-confirm="Delete {{ invoice.invoice_number }}? It stays recorded in Deleted bills."
+          onsubmit="return setDeleteReason(this);">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="reason" value="">
+      <button type="submit" class="btn btn-danger">Delete</button>
+    </form>
+    <a href="{{ url_for('invoices') }}" class="btn btn-ghost">Back</a>
+  </div>
+</div>
+
+<div class="invoice-container">
+    <div class="inv-head">
+        <div>
+            <div class="inv-firm">{{ settings.firm_name if settings else 'Your Firm Name' }}</div>
+            <div class="inv-sub">Gold &amp; Silver Jewelry</div>
+            <div class="inv-addr">{{ settings.firm_address if settings else '' }}{% if settings and settings.firm_phone %} · {{ settings.firm_phone }}{% endif %}{% if settings and settings.firm_email %} · {{ settings.firm_email }}{% endif %}</div>
+            {% if settings and settings.firm_gst and settings.show_gstin %}<div class="inv-addr">GSTIN: {{ settings.firm_gst }}</div>{% endif %}
+        </div>
+        <div class="inv-meta">
+            <div class="inv-no">{{ invoice.invoice_number }}</div>
+            <div class="inv-date">{{ invoice.date_created.strftime('%d %B %Y') }}</div>
+            <span class="inv-status status-{{ invoice.status }}">{{ invoice.status|capitalize }}</span>
+        </div>
+    </div>
+
+    <div class="inv-billto">
+        <div class="inv-cap">Bill To</div>
+        <div class="inv-client">{{ invoice.client.name }} &nbsp;<span class="inv-phone">{{ invoice.client.phone or '' }}</span></div>
+        {% if invoice.client.email %}<div class="inv-muted">{{ invoice.client.email }}</div>{% endif %}
+        {% if invoice.client.address %}<div class="inv-muted">{{ invoice.client.address }}</div>{% endif %}
+        {% if (settings is none or settings.show_gstin) and invoice.client_gstin %}
+        <div class="inv-muted">Customer GSTIN: {{ invoice.client_gstin }}</div>
+        {% elif (settings is none or settings.show_gstin) and invoice.client.gstin %}
+        <div class="inv-muted">Customer GSTIN: {{ invoice.client.gstin }}</div>
+        {% endif %}
+    </div>
+
+    <table class="invoice-table">
+        <thead>
+            <tr><th>#</th><th>Item</th><th>Qty</th><th>Weight</th>{% if settings is none or settings.show_making_charges %}<th>Making</th>{% endif %}<th>Rate (₹)</th><th>Metal Rate</th><th class="num">Amount (₹)</th></tr>
+        </thead>
+        <tbody>
+            {% for item in invoice.items %}
+            <tr>
+                <td>{{ loop.index }}</td>
+                <td>
+                    <strong>{{ item.description }}</strong> {% if item.item_type != 'general' %}<span class="item-badge">{{ item.item_type|capitalize }}</span>{% endif %}
+                    {% if item.item_type in ('gold', 'silver') %}
+                    {% set rate = invoice.gold_rate if item.item_type == 'gold' else invoice.silver_rate %}
+                    {% set grams = (item.weight or 0) * (item.quantity or 0) %}
+                    {% set metal = (grams * (rate or 0))|round|int %}
+                    <div class="line-note">{{ '%.3f'|format(grams) }} g × ₹{{ (rate or 0)|inr }}/g
+                        = ₹{{ metal|inr }}{% if item.line_total - metal %} + making ₹{{ (item.line_total - metal)|inr }}{% endif %}</div>
+                    {% endif %}
+                </td>
+                <td>{{ item.quantity }}{% if item.product and (item.product.unit or 'pcs') == 'g' %} g{% endif %}</td>
+                <td>{% if item.product and (item.product.unit or 'pcs') == 'g' %}by weight{% elif item.weight %}{{ item.weight }} g{% else %}–{% endif %}</td>
+                {% if settings is none or settings.show_making_charges %}<td>{{ item|makingtext }}</td>{% endif %}
+                <td>{{ (item.unit_price)|inr }}</td>
+                <td>{% if item.item_type == 'gold' %}₹{{ (invoice.gold_rate or 0)|inr }}/g{% elif item.item_type == 'silver' %}₹{{ (invoice.silver_rate or 0)|inr }}/g{% else %}–{% endif %}</td>
+                <td class="num">{{ (item.line_total)|inr }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    <div class="inv-rates">Gold ₹{{ (invoice.gold_rate or 0)|inr }}/g · Silver ₹{{ (invoice.silver_rate or 0)|inr }}/g on this bill</div>
+
+    <div class="totals-section">
+        <div class="total-row"><span>Subtotal</span><span>₹{{ (invoice.subtotal)|inr }}</span></div>
+        {% if invoice.discount_amount %}
+        <div class="total-row"><span>Discount{% if invoice.discount_type == 'percent' %} ({{ invoice.discount_value }}%){% endif %}</span><span class="disc">− ₹{{ (invoice.discount_amount)|inr }}</span></div>
+        {% endif %}
+        {% if invoice.gst_rate %}
+        <div class="total-row"><span>GST ({{ invoice.gst_rate }}%)</span><span>₹{{ (invoice.gst_amount)|inr }}</span></div>
+        {% endif %}
+        {% if invoice.exchange_amount %}
+        <div class="total-row"><span>Old {{ invoice.exchange_metal|capitalize }} Exchange{% if invoice.exchange_weight %} ({{ invoice.exchange_weight }}g){% endif %}</span><span class="disc">− ₹{{ (invoice.exchange_amount)|inr }}</span></div>
+        {% endif %}
+        <div class="total-row grand"><span>Total</span><span>₹{{ (invoice.total)|inr }}</span></div>
+        <div class="total-row paidline"><span>Paid</span><span>₹{{ (total_paid)|inr }}</span></div>
+        <div class="total-row paidline"><span>Balance Due</span><span>₹{{ (remaining)|inr }}</span></div>
+    </div>
+
+    {% if invoice.invoice_payments %}
+    <div class="inv-cap" style="margin-top: 22px;">Payments Received</div>
+    <table class="mini-table">
+        <thead><tr><th>Date</th><th>Amount (₹)</th><th>Method</th><th>Notes</th></tr></thead>
+        <tbody>
+            {% for payment in invoice.invoice_payments %}
+            <tr><td>{{ payment.payment_date.strftime('%d %b %Y') }}</td><td>{{ (payment.amount)|inr }}</td><td>{{ payment.payment_method|capitalize }}</td><td>{{ payment.notes or '–' }}</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% endif %}
+
+    <div class="inv-foot">Thank you for shopping with us · Please mention your bill number for payments</div>
+</div>
+
+<style>
+.invoice-container { max-width: 820px; margin: 0 auto; background: #fff; border-radius: 12px;
+    box-shadow: 0 8px 30px rgba(120, 90, 20, .10); font-family: Arial, sans-serif; padding-bottom: 8px; }
+.inv-head { background: linear-gradient(180deg, #fffdf4, #fff); border: 2px solid #000;
+    border-bottom: 3px solid #000; border-radius: 12px 12px 0 0;
+    padding: 24px 28px; display: flex; justify-content: space-between; gap: 16px; }
+.inv-firm { font-size: 26px; color: #8a6d1b; font-weight: bold; font-family: Georgia, serif; }
+.inv-sub { font-size: 12px; letter-spacing: 2px; text-transform: uppercase; color: #713f12; margin-top: 2px; }
+.inv-addr { font-size: 14px; color: #111; margin-top: 6px; font-family: Arial, sans-serif; }
+.inv-meta { text-align: right; }
+.inv-no { font-size: 20px; font-weight: bold; color: #000; }
+.inv-date { font-size: 14px; color: #111; margin: 2px 0 8px; font-family: Arial, sans-serif; }
+.inv-status { display: inline-block; padding: 3px 12px; border-radius: 20px; font-size: 12px;
+    font-family: Arial, sans-serif; font-weight: bold; text-transform: uppercase; }
+.status-pending { background: #fef3c7; color: #92400e; }
+.status-paid { background: #dcfce7; color: #166534; }
+.status-cancelled { background: #fee2e2; color: #991b1b; }
+.inv-billto { padding: 18px 28px 0; }
+.inv-cap { font-size: 12px; letter-spacing: 2px; text-transform: uppercase; color: #713f12; font-weight: bold; margin-bottom: 6px; }
+.inv-client { font-size: 18px; font-weight: bold; color: #000; }
+.inv-phone { font-size: 14px; font-weight: normal; color: #111; }
+.inv-muted { font-size: 14px; color: #111; }
+.invoice-table { width: calc(100% - 56px); margin: 16px 28px 0; border-collapse: collapse; }
+.invoice-table th { font-size: 12px; letter-spacing: 1px; text-transform: uppercase; color: #fff;
+    background: #000; padding: 10px 8px; text-align: left; }
+.invoice-table th:first-child { border-radius: 8px 0 0 0; }
+.invoice-table th:last-child { border-radius: 0 8px 0 0; }
+.invoice-table td { padding: 11px 8px; border-bottom: 1px solid #f0e6cf; font-size: 14px; }
+.invoice-table .num { text-align: right; font-weight: bold; }
+.line-note { font-size: 11.5px; color: #8a8275; margin-top: 3px; font-weight: normal; }
+.item-badge { display: inline-block; background: #fef3c7; color: #92400e; border: 1px solid #e5c07b;
+    padding: 1px 8px; border-radius: 12px; font-size: 11px; margin-left: 6px; }
+.inv-rates { margin: 10px 28px 0; font-size: 14px; color: #111; }
+.totals-section { margin: 12px 28px 0 40%; border: 2px solid #000; border-radius: 10px;
+    background: #fffdf4; padding: 12px 18px; }
+.total-row { display: flex; justify-content: space-between; padding: 4px 0; font-size: 14px; }
+.disc { color: #15803d; font-weight: bold; }
+.grand { border-top: 2px solid #000; margin-top: 6px; padding-top: 8px; font-size: 18px; font-weight: bold; color: #000; }
+.paidline { color: #166534; font-weight: bold; }
+.mini-table { width: calc(100% - 56px); margin: 8px 28px 0; border-collapse: collapse; }
+.mini-table th { font-size: 12px; text-transform: uppercase; letter-spacing: 1px; color: #111;
+    text-align: left; padding: 8px; border-bottom: 1px solid #000; }
+.mini-table td { font-size: 14px; color: #000; padding: 8px; border-bottom: 1px solid #e7e5e4; }
+.inv-foot { text-align: center; font-size: 14px; color: #333; padding: 20px 28px 24px; }
+@media (max-width: 640px) {
+    .invoice-container { overflow-x: auto; }
+    .inv-head { flex-direction: column; padding: 18px; gap: 10px; }
+    .inv-meta { text-align: left; }
+    .inv-firm { font-size: 22px; }
+    .inv-billto { padding: 14px 18px 0; }
+    .invoice-table { width: calc(100% - 36px); margin: 14px 18px 0; min-width: 620px; }
+    .mini-table { width: calc(100% - 36px); margin: 8px 18px 0; min-width: 480px; }
+    .inv-rates { margin: 10px 18px 0; font-size: 13px; }
+    .totals-section { margin: 12px 18px 0 18px; }
+    .inv-foot { padding: 16px 18px 20px; }
+}
+@media print {
+    header, footer, .toasts, .no-print { display: none !important; }
+    main { padding: 0; }
+    .invoice-container { box-shadow: none; max-width: none; }
+    .inv-head { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+}
+</style>
+
+<script>
+/* Ask why a bill is being deleted — stored with its archive copy. */
+function setDeleteReason(form){
+  var reason = window.prompt('Reason for deleting this bill (optional):', '');
+  if (reason === null) return false;
+  form.querySelector('[name="reason"]').value = reason;
+  return true;
+}
+
+/* Share the bill PDF, not just text: fetch /invoices/<id>/pdf and hand the
+   file to the OS share sheet (WhatsApp shows up there). Browsers without
+   file-sharing fall back to the wa.me text link. */
+(function(){
+  var link = document.getElementById('wa-link');
+  if (!link) return;
+  var pdfUrl = {{ url_for('invoice_pdf', invoice_id=invoice.id)|tojson }};
+  var fileName = {{ (invoice.invoice_number ~ '.pdf')|tojson }};
+  link.addEventListener('click', function(e){
+    if (!navigator.share || !navigator.canShare) return;
+    e.preventDefault();
+    var done = false;
+    var fallback = function(){
+      if (!done) { done = true; window.open(link.href, '_blank', 'noopener'); }
+    };
+    fetch(pdfUrl, {credentials: 'same-origin'})
+      .then(function(r){ return r.blob(); })
+      .then(function(b){
+        var file = new File([b], fileName, {type: 'application/pdf'});
+        if (!navigator.canShare({files: [file]})) return fallback();
+        return navigator.share({files: [file], title: fileName,
+                                text: 'Invoice ' + fileName.replace(/\.pdf$/, '')})
+          .catch(function(err){ if (!err || err.name !== 'AbortError') fallback(); });
+      })
+      .catch(fallback);
+  });
+})();
+</script>
+{% endblock %}

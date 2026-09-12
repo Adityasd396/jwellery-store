@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tags · {{ tags|length }} label(s)</title>
+    {% set first = tags[0] %}
+    {% set fg = first.geo %}
+    {% from "tag_design.html" import tag_css %}
+    {{ tag_css(thermal=(layout != 'sheet'),
+               first_w=fg.body,
+               first_h=fg.height,
+               first_tail=fg.tail) }}
+    <style>
+        .no-print { max-width: 720px; margin: 0 auto 12px auto; font-family: Arial, sans-serif;
+            background: #fff; border: 1px solid #ddd; border-radius: 10px; padding: 12px 16px; }
+        .no-print h3 { margin: 0 0 6px 0; font-size: 15px; }
+        .print-btn { padding: 9px 20px; background: #27ae60; color: #fff; border: 0;
+            border-radius: 6px; cursor: pointer; font-size: 14px; font-weight: 600; }
+        .ghost { padding: 9px 16px; background: #fff; color: #333; border: 1px solid #ccc;
+            border-radius: 6px; font-size: 13.5px; text-decoration: none;
+            display: inline-flex; align-items: center; }
+        .hint { font-size: 12.5px; color: #777; }
+        .sheet { display: flex; flex-wrap: wrap; align-content: flex-start; }
+        .setup { border: 1px solid #e2d9c3; background: #fffdf6; border-radius: 9px;
+            padding: 10px 13px; margin-bottom: 10px; font-size: 12.5px; color: #5c5344; }
+        .setup .paper { font-size: 15px; font-weight: 700; color: #8a5b00; }
+        .setup ol { margin: 7px 0 0 18px; padding: 0; }
+        .setup li { margin-bottom: 3px; }
+    </style>
+</head>
+<body>
+    {% from "tag_design.html" import tag_art %}
+    <div class="no-print">
+        <h3>{{ tags|length }} tag{{ '' if tags|length == 1 else 's' }} ready
+            · {{ 'thermal roll (one label per page)' if layout != 'sheet' else 'A4 sheet' }}</h3>
+
+        {% if layout != 'sheet' %}
+        <div class="setup">
+            <div>Set the paper size to <span class="paper">{{ fg.total|round(1) }} × {{ fg.height|round(1) }} mm</span>
+                {% if fg.tail %}({{ fg.body|round(1) }} mm body + {{ fg.tail|round(1) }} mm tail){% endif %}</div>
+            <ol>
+                <li>Scale <b>100%</b> — not “Fit to page”.</li>
+                <li>Margins <b>None</b>.</li>
+                <li><b>Untick</b> “Headers and footers”, or the URL and date print on the label.</li>
+            </ol>
+            <div style="margin-top:7px">
+                <a href="{{ url_for('tag_calibration', w=fg.total) }}" class="ghost" style="padding:4px 10px;font-size:12.5px">
+                    Print a {{ fg.total|round(0)|int }} mm ruler to check
+                </a>
+            </div>
+        </div>
+        {% endif %}
+
+        <button class="print-btn" onclick="window.print()">🖨️ Print</button>
+        <a class="ghost" href="{{ url_for('tag_designer') }}">Back to designer</a>
+        <span class="hint">
+            {% if layout == 'sheet' %}
+            Tags print at their true mm size and flow left-to-right, wrapping onto
+            as many pages as needed. Print at 100% and they come out exact.
+            {% endif %}
+        </span>
+    </div>
+
+    <div class="sheet">
+        {% for t in tags %}
+        {{ tag_art(t.tpl, t.product, settings, t.qr, t.bc,
+                   w=t.geo.body, h=t.geo.height, tail=t.geo.tail) }}
+        {% endfor %}
+    </div>
+</body>
+</html>
